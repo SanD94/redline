@@ -200,6 +200,6 @@ Project first real release ready when:
 
 1. round-trip annotations back into DOCX
 2. GitHub PR comment export
-3. side-by-side HTML review UI
-4. change severity tagging
-5. LLM summary of document review activity
+3. change severity tagging
+4. LLM summary of document review activity
+5. Neovim plugin to show what's added/edited/deleted
