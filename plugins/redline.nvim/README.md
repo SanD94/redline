@@ -14,7 +14,7 @@ With `lazy.nvim`, add this to your custom Neovim config:
 
 ```lua
 {
-  dir = "{project-location}/redline", 
+  dir = "{project-location}/redline/plugins/redline.nvim", 
   name = "redline.nvim",
   config = function()
     require("redline").setup({
