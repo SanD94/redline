@@ -22,14 +22,16 @@ type parser struct {
 	paraIdx          int
 	changeParaIdx    map[int]int
 	commentParaIdx   map[int]int
+	version          model.VersionMode
 }
 
-func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte) (*model.RevealResult, error) {
+func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte, version model.VersionMode) (*model.RevealResult, error) {
 	p := &parser{
-		openComments:  make(map[int]bool),
-		headingStyles: make(map[string]int),
+		openComments:   make(map[int]bool),
+		headingStyles:  make(map[string]int),
 		changeParaIdx:  make(map[int]int),
 		commentParaIdx: make(map[int]int),
+		version:        version,
 	}
 
 	p.loadHeadingStyles(stylesXML)
@@ -156,13 +158,29 @@ func (p *parser) readParagraph(start xml.StartElement) (paraData, error) {
 			case isWordElement(t.Name, "r"):
 				p.readRun(t, false, false, &textParts)
 			case isWordElement(t.Name, "ins"):
-				p.readChange(t, true, &textParts)
+				if p.version == model.VersionNew {
+					p.readChangeContent(true, &textParts)
+				} else {
+					p.skipToEnd("ins")
+				}
 			case isWordElement(t.Name, "del"):
-				p.readChange(t, false, &textParts)
+				if p.version == model.VersionOld {
+					p.readChangeContent(false, &textParts)
+				} else {
+					p.skipToEnd("del")
+				}
 			case isWordElement(t.Name, "moveFrom"):
-				p.readChange(t, false, &textParts)
+				if p.version == model.VersionOld {
+					p.readChangeContent(false, &textParts)
+				} else {
+					p.skipToEnd("moveFrom")
+				}
 			case isWordElement(t.Name, "moveTo"):
-				p.readChange(t, true, &textParts)
+				if p.version == model.VersionNew {
+					p.readChangeContent(true, &textParts)
+				} else {
+					p.skipToEnd("moveTo")
+				}
 			case isWordElement(t.Name, "moveFromRangeStart"):
 				p.skipToEnd("moveFromRangeStart")
 			case isWordElement(t.Name, "moveToRangeStart"):
@@ -247,6 +265,28 @@ func (p *parser) readRun(start xml.StartElement, isInsert, isDelete bool, parts 
 				return
 			}
 		case xml.CharData:
+		}
+	}
+}
+
+func (p *parser) readChangeContent(isInsert bool, parts *[]string) {
+	for {
+		tok, err := p.decoder.Token()
+		if err != nil {
+			return
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if isWordElement(t.Name, "r") {
+				p.readRun(t, isInsert, !isInsert, parts)
+			} else {
+				p.skipToEnd(t.Name.Local)
+			}
+		case xml.EndElement:
+			if isWordEnd(t.Name, "ins") || isWordEnd(t.Name, "del") ||
+				isWordEnd(t.Name, "moveFrom") || isWordEnd(t.Name, "moveTo") {
+				return
+			}
 		}
 	}
 }

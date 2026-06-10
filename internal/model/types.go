@@ -2,6 +2,13 @@ package model
 
 import "encoding/json"
 
+type VersionMode int
+
+const (
+	VersionOld VersionMode = iota
+	VersionNew
+)
+
 type ChangeType string
 
 const (
@@ -43,7 +50,7 @@ type SourceMap map[string]SourceLocation
 
 type RevealResult struct {
 	Sections  []Section    `json:"sections"`
-	Changes   []Change     `json:"changes"`
+	Changes   []Change     `json:"changes,omitempty"`
 	Comments  []Comment    `json:"comments"`
 	SourceMap SourceMap    `json:"sourceMap"`
 }
