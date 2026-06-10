@@ -139,7 +139,7 @@ func (p *parser) assignCommentLocations(paras []paraData, sections []model.Secti
 			}
 		}
 		if anchor, ok := p.commentAnchors[comments[i].ID]; ok {
-			comments[i].AnchorText = strings.TrimSpace(anchor.Text.String())
+			comments[i].AnchorText = anchor.Text.String()
 			comments[i].AnchorKind = anchor.Kind
 		}
 	}
