@@ -26,13 +26,13 @@ func (p *parser) readParagraph(start xml.StartElement) (paraData, error) {
 			case isWordElement(t.Name, "r"):
 				p.readRun(t, "normal", true, false, &textParts)
 			case isWordElement(t.Name, "ins"):
-				p.readChangeContent("added", p.version == model.VersionNew, &textParts)
+				p.readChangeContent("added", p.version == model.VersionNew, false, &textParts)
 			case isWordElement(t.Name, "del"):
-				p.readChangeContent("deleted", p.version == model.VersionOld, &textParts)
+				p.readChangeContent("deleted", p.version == model.VersionOld, true, &textParts)
 			case isWordElement(t.Name, "moveFrom"):
-				p.readChangeContent("deleted", p.version == model.VersionOld, &textParts)
+				p.readChangeContent("deleted", p.version == model.VersionOld, false, &textParts)
 			case isWordElement(t.Name, "moveTo"):
-				p.readChangeContent("added", p.version == model.VersionNew, &textParts)
+				p.readChangeContent("added", p.version == model.VersionNew, false, &textParts)
 			case isWordElement(t.Name, "moveFromRangeStart"):
 				skipToEnd(p.decoder, "moveFromRangeStart")
 			case isWordElement(t.Name, "moveToRangeStart"):
@@ -87,7 +87,7 @@ func (p *parser) readStyle(start xml.StartElement) string {
 	}
 }
 
-func (p *parser) readRun(start xml.StartElement, anchorKind string, emit, isDelete bool, parts *[]string) {
+func (p *parser) readRun(start xml.StartElement, anchorKind string, emit, useDelText bool, parts *[]string) {
 	for {
 		tok, err := p.decoder.Token()
 		if err != nil {
@@ -99,13 +99,13 @@ func (p *parser) readRun(start xml.StartElement, anchorKind string, emit, isDele
 			case isWordElement(t.Name, "t"):
 				text := readCharData(p.decoder)
 				p.appendCommentAnchorText(anchorKind, text)
-				if emit && !isDelete {
+				if emit && !useDelText {
 					*parts = append(*parts, text)
 				}
 			case isWordElement(t.Name, "delText"):
 				text := readCharData(p.decoder)
 				p.appendCommentAnchorText(anchorKind, text)
-				if emit && isDelete {
+				if emit && useDelText {
 					*parts = append(*parts, text)
 				}
 			case isWordElement(t.Name, "commentRangeStart"):
@@ -128,8 +128,7 @@ func (p *parser) readRun(start xml.StartElement, anchorKind string, emit, isDele
 	}
 }
 
-func (p *parser) readChangeContent(anchorKind string, emit bool, parts *[]string) {
-	isDelete := anchorKind == "deleted"
+func (p *parser) readChangeContent(anchorKind string, emit, useDelText bool, parts *[]string) {
 	for {
 		tok, err := p.decoder.Token()
 		if err != nil {
@@ -139,7 +138,7 @@ func (p *parser) readChangeContent(anchorKind string, emit bool, parts *[]string
 		case xml.StartElement:
 			switch {
 			case isWordElement(t.Name, "r"):
-				p.readRun(t, anchorKind, emit, isDelete, parts)
+				p.readRun(t, anchorKind, emit, useDelText, parts)
 			case isWordElement(t.Name, "commentRangeStart"):
 				p.startCommentAnchor(t, anchorKind)
 				skipToEnd(p.decoder, "commentRangeStart")

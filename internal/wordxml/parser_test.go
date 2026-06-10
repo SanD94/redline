@@ -149,6 +149,50 @@ func TestParseCommentAnchorsForNormalAddedAndDeletedText(t *testing.T) {
 	assertCommentAnchor(t, result.Comments, 4, "mixed", "mixed normal and added")
 }
 
+func TestParseMovedTextOldAndNewVersions(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Introduction</w:t></w:r></w:p>
+    <w:p>
+      <w:moveFromRangeStart w:id="1"/>
+      <w:moveFrom w:id="1">
+        <w:r><w:t>Text0</w:t></w:r>
+      </w:moveFrom>
+      <w:moveFromRangeEnd w:id="1"/>
+      <w:r><w:t> another text</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:r><w:t>another text</w:t></w:r>
+      <w:moveToRangeStart w:id="1"/>
+      <w:moveTo w:id="1">
+        <w:r><w:t> Text0</w:t></w:r>
+      </w:moveTo>
+      <w:moveToRangeEnd w:id="1"/>
+    </w:p>
+  </w:body>
+</w:document>`)
+	stylesXML := []byte(heading1StylesXML)
+
+	oldResult, err := Parse(documentXML, nil, nil, stylesXML, model.VersionOld)
+	if err != nil {
+		t.Fatalf("Parse(old) error = %v", err)
+	}
+	newResult, err := Parse(documentXML, nil, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse(new) error = %v", err)
+	}
+
+	// Old version: Text0 from moveFrom at old location, " another text" remains
+	if got, want := oldResult.Sections[0].Content, "Text0 another text\n\nanother text"; got != want {
+		t.Fatalf("old content = %q, want %q", got, want)
+	}
+	// New version: moveFrom text gone, " another text" kept; moveTo added at end
+	if got, want := newResult.Sections[0].Content, " another text\n\nanother text Text0"; got != want {
+		t.Fatalf("new content = %q, want %q", got, want)
+	}
+}
+
 func TestParseUsesStylesXMLForHeadingBoundaries(t *testing.T) {
 	documentXML := []byte(`
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
