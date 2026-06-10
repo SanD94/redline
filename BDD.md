@@ -220,7 +220,6 @@ Feature: Write all reveal outputs as durable Markdown and JSON artifacts
     And the workspace contains `document.md`
     And the workspace contains `changes.md`
     And the workspace contains `comments.md`
-    And the workspace contains `review.json`
     And the workspace contains `source-map.json`
     And every generated text artifact is deterministic
 
@@ -255,7 +254,6 @@ Feature: Write all reveal outputs as durable Markdown and JSON artifacts
     When Redline renders review Markdown
     Then the inline content contains a marker for comment `c1`
     And `comments.md` contains the body for comment `c1`
-    And the marker can be traced back to `review.json`
 
   Scenario: Figures are extracted as first-class assets
     Given a DOCX fixture contains an embedded figure with a caption
@@ -263,8 +261,6 @@ Feature: Write all reveal outputs as durable Markdown and JSON artifacts
     Then the figure file is written under `figures/`
     And Markdown content references the figure with a stable relative path
     And the caption remains associated with the figure
-    And `review.json` records the figure metadata
-
   Scenario: References are extracted as first-class content
     Given a DOCX fixture contains a references section or bibliography metadata
     When `redline reveal` processes the fixture
@@ -293,7 +289,7 @@ Feature: Audit revealed Word content against Markdown sources
     And the report is available in Markdown and JSON forms
 
   Scenario: Audit distinguishes tracked Word changes from inferred untracked changes
-    Given a reveal workspace contains tracked Word changes from `review.json`
+    Given a reveal workspace contains tracked Word changes
     And the current Markdown contains an additional edit not represented by tracked Word changes
     When `redline audit` runs in the workspace
     Then the audit report labels Word-tracked changes as `tracked`
@@ -504,7 +500,6 @@ Feature: Improve everyday Redline workflows
     Then the workspace contains a summary of insertion count
     And the summary contains deletion count
     And the summary contains comment count
-    And the counts match `review.json`
 
   Scenario: Partially parsed files produce warnings and meaningful exit status
     Given a DOCX contains both supported and unsupported structures

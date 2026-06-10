@@ -121,9 +121,8 @@ Primary export formats:
 2. `document.md`
 3. `changes.md`
 4. `comments.md`
-5. `review.json`
-6. `figures/`
-7. `references.*`
+5. `figures/`
+6. `references.*`
 
 Suggested render rules:
 
@@ -309,7 +308,7 @@ Pandoc can help with DOCX extraction, but it should not be the only source of tr
      --output <temp>/review.md
    ```
 
-   Pandoc emits insertions, deletions, comments, and paragraph insert/delete markers as spans/classes. Redline can translate these into its own Markdown review syntax and `review.json`.
+   Pandoc emits insertions, deletions, comments, and paragraph insert/delete markers as spans/classes. Redline can translate these into its own Markdown review syntax.
 
 4. Optionally run Pandoc to JSON for a more structured intermediate form when Markdown spans are too fragile:
 
@@ -334,7 +333,7 @@ Pandoc can help with DOCX extraction, but it should not be the only source of tr
 
 6. Reconcile the Pandoc output and Go XML model into Redline's normalized model.
 7. Split accepted content into `sections/<slug>.md` using heading/title boundaries.
-8. Write `document.md`, `changes.md`, `comments.md`, `review.json`, `source-map.json`, extracted `figures/`, and warnings.
+8. Write `document.md`, `changes.md`, `comments.md`, `source-map.json`, extracted `figures/`, and warnings.
 
 ### Why combine Pandoc and custom XML parsing?
 
@@ -457,7 +456,6 @@ Current workspace output:
 
 Current known gaps relative to the full roadmap:
 
-- No `review.json` writer in the current reveal command.
 - No `document.md`, `changes.md`, `source-map.json`, `figures/`, or references extraction yet.
 - No Pandoc-assisted accepted/review AST extraction yet.
 - No table, figure, bibliography, footnote, header, or footer extraction yet.
