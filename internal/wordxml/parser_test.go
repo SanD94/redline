@@ -1,0 +1,125 @@
+package wordxml
+
+import (
+	"testing"
+
+	"github.com/SanD94/redline/internal/model"
+)
+
+func TestParseTrackedChangesOldAndNewVersions(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Introduction</w:t></w:r></w:p>
+    <w:p>
+      <w:r><w:t>Before </w:t></w:r>
+      <w:del><w:r><w:delText>old</w:delText></w:r></w:del>
+      <w:ins><w:r><w:t>new</w:t></w:r></w:ins>
+      <w:r><w:t> after.</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>`)
+	stylesXML := []byte(heading1StylesXML)
+
+	oldResult, err := Parse(documentXML, nil, nil, stylesXML, model.VersionOld)
+	if err != nil {
+		t.Fatalf("Parse(old) error = %v", err)
+	}
+	newResult, err := Parse(documentXML, nil, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse(new) error = %v", err)
+	}
+
+	if got, want := oldResult.Sections[0].ID, "introduction"; got != want {
+		t.Fatalf("old section ID = %q, want %q", got, want)
+	}
+	if got, want := oldResult.Sections[0].Content, "Before old after."; got != want {
+		t.Fatalf("old content = %q, want %q", got, want)
+	}
+	if got, want := newResult.Sections[0].Content, "Before new after."; got != want {
+		t.Fatalf("new content = %q, want %q", got, want)
+	}
+}
+
+func TestParseCommentsAndThreadLocations(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Discussion</w:t></w:r></w:p>
+    <w:p>
+      <w:commentRangeStart w:id="1"/>
+      <w:r><w:t>Commented text.</w:t></w:r>
+      <w:commentRangeEnd w:id="1"/>
+      <w:r><w:commentReference w:id="1"/></w:r>
+    </w:p>
+  </w:body>
+</w:document>`)
+	commentsXML := []byte(`
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+  <w:comment w:id="1" w:author="Reviewer" w:date="2026-06-09T13:01:00Z">
+    <w:p w14:paraId="parent"><w:r><w:t>Nice comment.</w:t></w:r></w:p>
+  </w:comment>
+  <w:comment w:id="2" w:author="Reviewer" w:date="2026-06-09T13:02:00Z">
+    <w:p w14:paraId="child"><w:r><w:t>Reply.</w:t></w:r></w:p>
+  </w:comment>
+</w:comments>`)
+	commentsExtendedXML := []byte(`
+<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">
+  <w15:commentEx w15:paraId="child" w15:paraIdParent="parent"/>
+</w15:commentsEx>`)
+	stylesXML := []byte(heading1StylesXML)
+
+	result, err := Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if got, want := len(result.Comments), 2; got != want {
+		t.Fatalf("comment count = %d, want %d", got, want)
+	}
+	if got, want := result.Comments[0].SectionID, "discussion"; got != want {
+		t.Fatalf("comment section = %q, want %q", got, want)
+	}
+	if got, want := result.Comments[0].Text, "Nice comment."; got != want {
+		t.Fatalf("comment text = %q, want %q", got, want)
+	}
+	if got, want := result.Comments[1].ParentID, 1; got != want {
+		t.Fatalf("reply parent ID = %d, want %d", got, want)
+	}
+}
+
+func TestParseUsesStylesXMLForHeadingBoundaries(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="TitleStyle"/></w:pPr><w:r><w:t>Results</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Result body.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="SubheadingStyle"/></w:pPr><w:r><w:t>Sub result</w:t></w:r></w:p>
+  </w:body>
+</w:document>`)
+	stylesXML := []byte(`
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="TitleStyle"><w:name w:val="heading 1"/></w:style>
+  <w:style w:type="paragraph" w:styleId="SubheadingStyle"><w:name w:val="heading 2"/></w:style>
+</w:styles>`)
+
+	result, err := Parse(documentXML, nil, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if got, want := len(result.Sections), 1; got != want {
+		t.Fatalf("section count = %d, want %d", got, want)
+	}
+	if got, want := result.Sections[0].ID, "results"; got != want {
+		t.Fatalf("section ID = %q, want %q", got, want)
+	}
+	if got, want := result.Sections[0].Content, "Result body.\n\n## Sub result"; got != want {
+		t.Fatalf("section content = %q, want %q", got, want)
+	}
+}
+
+const heading1StylesXML = `
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>
+</w:styles>`

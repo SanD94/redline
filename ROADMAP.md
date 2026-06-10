@@ -416,28 +416,54 @@ Mitigation:
 - record Pandoc version in generated metadata when Pandoc is used
 - provide a documented install check for Pandoc-dependent commands
 
-## Testing Plan
+## Current Phase 1 Implementation Details
 
-Need small but sharp fixture set:
+The implemented slice is the Go-only `redline reveal` path. It does not depend on Pandoc yet.
 
-1. insertion only
-2. deletion only
-3. replacement via delete + insert
-4. single comment on word
-5. comment on paragraph range
-6. nested or adjacent changes
-7. document with tables
-8. document with headings split into multiple Markdown files
-9. document with embedded figures and captions
-10. document with references or bibliography section
-11. document edited without track changes
-12. Markdown project that builds a clean `.docx`
-13. Markdown project built with a Pandoc reference document
-14. Pandoc-missing command failure path
+Command flow:
 
-Best regression test: same `.docx` fixture always renders same Markdown.
+1. `cmd/redline` dispatches `redline reveal <file.docx> [--output <dir>]` to `internal/cli.RunReveal`.
+2. `internal/docx.Open` reads the DOCX zip archive and loads these Word parts when present:
+   - `word/document.xml`
+   - `word/comments.xml`
+   - `word/commentsExtended.xml`
+   - `word/styles.xml`
+3. `internal/wordxml.Parse` runs twice over the same document XML:
+   - `model.VersionOld`: rejects insertions and keeps deletions to reconstruct the pre-review text.
+   - `model.VersionNew`: keeps insertions and rejects deletions to reconstruct the accepted/current text.
+4. `internal/workspace.Writer` writes the old-version sections first.
+5. `internal/vcs.Manager` snapshots that old-version workspace with `jj` when available, otherwise `git`.
+6. `internal/workspace.Writer` overwrites sections with the new-version output and writes current metadata files.
+7. The resulting VCS diff represents old-to-new tracked-change effects in Markdown form.
 
-For generated `.docx` outputs, prefer structural checks over byte-for-byte comparisons because Pandoc-created archives may contain timestamps, relationship ids, or version-dependent details.
+Current parser behavior:
+
+- Body paragraphs are parsed from `word/document.xml`.
+- Tables and section properties are skipped for now.
+- Heading boundaries are detected from direct Word heading style names or from `word/styles.xml` canonical style names.
+- Level-1 headings start new section files.
+- Level-2+ headings are rendered inside the current section as Markdown headings.
+- `w:ins` and `w:moveTo` are included only in the new version.
+- `w:del` and `w:moveFrom` are included only in the old version.
+- Comment bodies are read from `word/comments.xml`.
+- Comment reply relationships are read from `word/commentsExtended.xml`.
+- Comment locations are assigned from `w:commentRangeStart` paragraph positions to the nearest parsed section.
+
+Current workspace output:
+
+- `sections/<section-id>.md` — current/new accepted section text.
+- `manifest.json` — deterministic section ordering with id, title, and heading level.
+- `comments.md` — Markdown comment report when comments exist.
+
+Current known gaps relative to the full roadmap:
+
+- No `review.json` writer in the current reveal command.
+- No `document.md`, `changes.md`, `source-map.json`, `figures/`, or references extraction yet.
+- No Pandoc-assisted accepted/review AST extraction yet.
+- No table, figure, bibliography, footnote, header, or footer extraction yet.
+- No `audit`, `imprint`, `disappear`, `check`, or `pandoc` commands yet.
+
+Behavior specifications and test scenarios live in `BDD.md`.
 
 ## Definition Of Done
 

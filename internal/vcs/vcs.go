@@ -53,7 +53,12 @@ func (m *Manager) Snapshot(msg string) error {
 		if out, err := add.CombinedOutput(); err != nil {
 			return fmt.Errorf("git add: %w\n%s", err, out)
 		}
-		commit := exec.Command("git", "commit", "-m", msg)
+		commit := exec.Command(
+			"git",
+			"-c", "user.name=redline",
+			"-c", "user.email=redline@example.invalid",
+			"commit", "-m", msg,
+		)
 		commit.Dir = m.Dir
 		if out, err := commit.CombinedOutput(); err != nil {
 			return fmt.Errorf("git commit: %w\n%s", err, out)
