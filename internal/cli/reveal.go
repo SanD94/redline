@@ -92,10 +92,8 @@ func RunReveal(args []string) error {
 	if err := wr.WriteManifest(newResult); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
 	}
-	if len(newResult.Comments) > 0 {
-		if err := wr.WriteComments(newResult); err != nil {
-			return fmt.Errorf("write comments: %w", err)
-		}
+	if err := wr.WriteComments(newResult); err != nil {
+		return fmt.Errorf("write comments: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "  comments: %d\n", len(newResult.Comments))
@@ -103,9 +101,7 @@ func RunReveal(args []string) error {
 	fmt.Fprintf(os.Stderr, "\nworkspace: %s\n", opts.OutputDir)
 	fmt.Fprintf(os.Stderr, "  sections/     — title-wise markdown files (new version)\n")
 	fmt.Fprintf(os.Stderr, "  manifest.json — section ordering and hierarchy\n")
-	if len(newResult.Comments) > 0 {
-		fmt.Fprintf(os.Stderr, "  comments.md   — comment report with section references\n")
-	}
+	fmt.Fprintf(os.Stderr, "  comments.md   — comment report with section references\n")
 
 	diffCmd := vcsMgr.DiffCmd()
 	if diffCmd != "" {

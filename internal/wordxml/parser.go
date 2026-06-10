@@ -12,6 +12,7 @@ import (
 type parser struct {
 	decoder        *xml.Decoder
 	openComments   map[int]bool
+	commentAnchors map[int]*commentAnchor
 	headingStyles  map[string]int
 	paraIdx        int
 	commentParaIdx map[int]int
@@ -23,9 +24,16 @@ type paraData struct {
 	text  string
 }
 
+type commentAnchor struct {
+	ParaIdx int
+	Kind    string
+	Text    strings.Builder
+}
+
 func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte, version model.VersionMode) (*model.RevealResult, error) {
 	p := &parser{
 		openComments:   make(map[int]bool),
+		commentAnchors: make(map[int]*commentAnchor),
 		headingStyles:  make(map[string]int),
 		commentParaIdx: make(map[int]int),
 		version:        version,
@@ -129,6 +137,10 @@ func (p *parser) assignCommentLocations(paras []paraData, sections []model.Secti
 			if paraIdx < len(paraToSection) {
 				comments[i].SectionID = paraToSection[paraIdx]
 			}
+		}
+		if anchor, ok := p.commentAnchors[comments[i].ID]; ok {
+			comments[i].AnchorText = strings.TrimSpace(anchor.Text.String())
+			comments[i].AnchorKind = anchor.Kind
 		}
 	}
 }

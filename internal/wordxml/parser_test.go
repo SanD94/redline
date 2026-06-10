@@ -83,9 +83,70 @@ func TestParseCommentsAndThreadLocations(t *testing.T) {
 	if got, want := result.Comments[0].Text, "Nice comment."; got != want {
 		t.Fatalf("comment text = %q, want %q", got, want)
 	}
+	if got, want := result.Comments[0].AnchorText, "Commented text."; got != want {
+		t.Fatalf("comment anchor text = %q, want %q", got, want)
+	}
+	if got, want := result.Comments[0].AnchorKind, "normal"; got != want {
+		t.Fatalf("comment anchor kind = %q, want %q", got, want)
+	}
 	if got, want := result.Comments[1].ParentID, 1; got != want {
 		t.Fatalf("reply parent ID = %d, want %d", got, want)
 	}
+}
+
+func TestParseCommentAnchorsForNormalAddedAndDeletedText(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Discussion</w:t></w:r></w:p>
+    <w:p>
+      <w:r><w:t>Before </w:t></w:r>
+      <w:commentRangeStart w:id="1"/>
+      <w:r><w:t>normal</w:t></w:r>
+      <w:commentRangeEnd w:id="1"/>
+      <w:r><w:t> </w:t></w:r>
+      <w:ins>
+        <w:commentRangeStart w:id="2"/>
+        <w:r><w:t>added</w:t></w:r>
+        <w:commentRangeEnd w:id="2"/>
+      </w:ins>
+      <w:r><w:t> </w:t></w:r>
+      <w:del>
+        <w:commentRangeStart w:id="3"/>
+        <w:r><w:delText>deleted</w:delText></w:r>
+        <w:commentRangeEnd w:id="3"/>
+      </w:del>
+      <w:r><w:t> after.</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:commentRangeStart w:id="4"/>
+      <w:r><w:t>mixed normal</w:t></w:r>
+      <w:ins><w:r><w:t> and added</w:t></w:r></w:ins>
+      <w:commentRangeEnd w:id="4"/>
+    </w:p>
+  </w:body>
+</w:document>`)
+	commentsXML := []byte(`
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:comment w:id="1"><w:p><w:r><w:t>Normal comment.</w:t></w:r></w:p></w:comment>
+  <w:comment w:id="2"><w:p><w:r><w:t>Added comment.</w:t></w:r></w:p></w:comment>
+  <w:comment w:id="3"><w:p><w:r><w:t>Deleted comment.</w:t></w:r></w:p></w:comment>
+  <w:comment w:id="4"><w:p><w:r><w:t>Mixed comment.</w:t></w:r></w:p></w:comment>
+</w:comments>`)
+	stylesXML := []byte(heading1StylesXML)
+
+	result, err := Parse(documentXML, commentsXML, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if got, want := result.Sections[0].Content, "Before normal added  after.\n\nmixed normal and added"; got != want {
+		t.Fatalf("new content = %q, want %q", got, want)
+	}
+	assertCommentAnchor(t, result.Comments, 1, "normal", "normal")
+	assertCommentAnchor(t, result.Comments, 2, "added", "added")
+	assertCommentAnchor(t, result.Comments, 3, "deleted", "deleted")
+	assertCommentAnchor(t, result.Comments, 4, "mixed", "mixed normal and added")
 }
 
 func TestParseUsesStylesXMLForHeadingBoundaries(t *testing.T) {
@@ -123,3 +184,23 @@ const heading1StylesXML = `
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>
 </w:styles>`
+
+func assertCommentAnchor(t *testing.T, comments []model.Comment, id int, kind, text string) {
+	t.Helper()
+	for _, cmt := range comments {
+		if cmt.ID != id {
+			continue
+		}
+		if got := cmt.SectionID; got != "discussion" {
+			t.Fatalf("comment %d section = %q, want discussion", id, got)
+		}
+		if got := cmt.AnchorKind; got != kind {
+			t.Fatalf("comment %d anchor kind = %q, want %q", id, got, kind)
+		}
+		if got := cmt.AnchorText; got != text {
+			t.Fatalf("comment %d anchor text = %q, want %q", id, got, text)
+		}
+		return
+	}
+	t.Fatalf("comment %d not found", id)
+}

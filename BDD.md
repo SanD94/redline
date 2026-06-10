@@ -14,7 +14,7 @@ make smoke
 Feature: Reveal a reviewed DOCX as a Markdown workspace
 
   Redline should expose Word review changes and comments as deterministic Markdown files
-  so review artifacts can be inspected in git.
+  so review artifacts can be inspected in the local VCS.
 
   Background:
     Given a DOCX file contains `word/document.xml`
@@ -83,10 +83,23 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
 
   Scenario: Comment anchors are assigned to the nearest section
     Given the document has a level-1 heading `Discussion`
-    And a later paragraph contains `w:commentRangeStart` for comment id `1`
+    And a later paragraph contains `w:commentRangeStart` and `w:commentRangeEnd` for comment id `1` around text `Commented text.`
     And `word/comments.xml` contains comment id `1`
     When the Word XML parser extracts the document
     Then comment id `1` has section id `discussion`
+    And comment id `1` has anchor kind `normal`
+    And comment id `1` has anchor text `Commented text.`
+
+  Scenario: Comment anchors can target normal, added, or deleted text
+    Given a paragraph contains a normal-text comment range for comment id `1`
+    And the paragraph contains an inserted-text comment range for comment id `2`
+    And the paragraph contains a deleted-text comment range for comment id `3`
+    And `word/comments.xml` contains comment ids `1`, `2`, and `3`
+    When the Word XML parser extracts the new version
+    Then comment id `1` has anchor kind `normal`
+    And comment id `2` has anchor kind `added`
+    And comment id `3` has anchor kind `deleted`
+    And all three comments preserve their selected anchor text
 
   Scenario: A section renders as Markdown
     Given a section has title `Introduction`
@@ -105,6 +118,8 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
     And the comment author is `Reviewer`
     And the comment date is `2026-06-09T13:01:00Z`
     And the comment section id is `discussion`
+    And the comment anchor kind is `normal`
+    And the comment anchor text is `commented text`
     And the comment text is `Nice comment.`
     When the Markdown renderer renders comments
     Then the output contains `## Comment 4`
@@ -114,7 +129,15 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
       """
       - **Section:** `discussion`
       """
+    And the output contains `- **Anchor kind:** normal`
+    And the output contains `- **Anchor text:** commented text`
     And the output contains `- **Text:** Nice comment.`
+
+  Scenario: Comments report exists even when no comments exist
+    Given a DOCX contains no comments
+    When `redline reveal` writes a temporary workspace
+    Then the workspace contains `comments.md`
+    And `comments.md` contains `No comments found.`
 
   Scenario: The sample DOCX produces the current Phase 1 workspace
     Given the fixture `workspace/sample.docx`
@@ -136,10 +159,11 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
       | acknowledgements                    |
       | author-contributions                |
       | additional-information              |
-    And `comments.md` contains `## Comment 4`
-    And `comments.md` contains `## Comment 5`
-    And `comments.md` contains `## Comment 6`
-    And `comments.md` contains `## Comment 7`
+    And `comments.md` contains an anchor kind `normal`
+    And `comments.md` contains an anchor kind `added`
+    And `comments.md` contains an anchor kind `deleted`
+    And `comments.md` contains `- **Text:** Nice comment on deleted text.`
+    And `comments.md` contains `- **Text:** Nice comment on added text.`
     And `comments.md` contains `- **Text:** Nice comment.`
     And `comments.md` contains `- **Text:** Comment within a comment`
     And `comments.md` contains `- **Text:** Isn’t it?`
@@ -158,69 +182,57 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
 
 These scenarios describe planned coverage and should be implemented only when the corresponding feature exists. They are intentionally broader than the current test suite so future work can be added safely without rediscovering expected behavior.
 
-## Phase 2: reliable review model
+## Phase 2: reliable comment and source model
 
-Feature: Normalize DOCX review data into a stable internal model
+Feature: Normalize DOCX comments and source data into a stable internal model
 
   Scenario: A document block carries stable source identity
     Given a DOCX paragraph appears in `word/document.xml`
     And the paragraph belongs to section `introduction`
-    When Redline builds the normalized review model
+    When Redline builds the normalized comment and source model
     Then the model contains a document block for the paragraph
     And the document block has a stable id
     And the document block has type `paragraph`
     And the document block has a source pointer into `word/document.xml`
     And the document block records surrounding text context
 
-  Scenario: A tracked insertion is normalized as a change entity
+  Scenario: Old and new text states are normalized for VCS diffing
     Given a DOCX paragraph contains a tracked insertion
-    And the insertion has an author and timestamp
-    When Redline builds the normalized review model
-    Then the model contains a change with type `insertion`
-    And the change has a stable id
-    And the change preserves author and timestamp when present
-    And the change has surrounding text context
-    And the change has a raw DOCX XML pointer
-
-  Scenario: A tracked deletion is normalized as a change entity
-    Given a DOCX paragraph contains a tracked deletion
-    And the deletion has an author and timestamp
-    When Redline builds the normalized review model
-    Then the model contains a change with type `deletion`
-    And the old version includes the deleted text
-    And the new version excludes the deleted text
-    And the change has surrounding text context
-    And the change has a raw DOCX XML pointer
+    And the same paragraph contains a tracked deletion
+    When Redline builds old and new text states
+    Then the old version rejects the insertion and keeps the deletion
+    And the new version keeps the insertion and rejects the deletion
+    And no separate Redline change entity is required for the VCS diff
 
   Scenario: A comment is normalized with its anchor range
     Given `word/comments.xml` contains a comment body
     And `word/document.xml` contains matching comment range markers
-    When Redline builds the normalized review model
+    When Redline builds the normalized comment and source model
     Then the model contains a comment with a stable id
     And the comment preserves author and timestamp when present
     And the comment references an anchor range
     And the anchor range includes nearby selected text
+    And the anchor range records whether the selected text is `normal`, `added`, `deleted`, or `mixed`
     And the comment has a raw DOCX XML pointer
 
   Scenario: Model output is deterministic across repeated parses
     Given the same DOCX fixture is parsed twice
-    When Redline builds normalized review models for both parses
+    When Redline builds normalized comment and source models for both parses
     Then the model ids are stable across both parses
     And the section ordering is stable across both parses
-    And the serialized review data is equal across both parses
+    And the serialized comment and source data is equal across both parses
 
 ## Phase 3: Markdown-first output
 
-Feature: Write all reveal outputs as durable Markdown and JSON artifacts
+Feature: Write reveal outputs as durable Markdown artifacts plus VCS state
 
   Scenario: Reveal writes a complete Markdown-first workspace
     Given a DOCX fixture contains headings, body text, tracked changes, and comments
     When `redline reveal` processes the fixture
     Then the workspace contains `sections/`
     And the workspace contains `document.md`
-    And the workspace contains `changes.md`
     And the workspace contains `comments.md`
-    And the workspace contains `source-map.json`
+    And tracked changes are visible through the workspace VCS diff
     And every generated text artifact is deterministic
 
   Scenario: Section files are written using stable slugs
@@ -236,24 +248,22 @@ Feature: Write all reveal outputs as durable Markdown and JSON artifacts
     Then `document.md` contains the sections in `manifest.json` order
     And `document.md` contains no generated VCS metadata
 
-  Scenario: Insertions render with Redline insertion markup
-    Given a normalized change has type `insertion`
-    And the inserted text is `added text`
-    When Redline renders review Markdown
-    Then the output contains `[++ added text ++]`
+  Scenario: Insertions and deletions are shown by VCS diff
+    Given a reveal workspace contains an old-version VCS snapshot
+    And the current section files contain the new accepted version
+    When the user runs `jj diff` or `git diff`
+    Then inserted and deleted text are visible in the VCS diff
+    And Redline does not require its own inline insertion/deletion markup
 
-  Scenario: Deletions render with Redline deletion markup
-    Given a normalized change has type `deletion`
-    And the deleted text is `removed text`
-    When Redline renders review Markdown
-    Then the output contains `[-- removed text --]`
-
-  Scenario: Comment anchors render with inline markers and report entries
+  Scenario: Comment anchors render as report metadata without inline markers
     Given a normalized comment is anchored to text `selected text`
     And the comment id is `c1`
-    When Redline renders review Markdown
-    Then the inline content contains a marker for comment `c1`
+    And the anchor kind is `added`
+    When Redline renders `comments.md`
+    Then `comments.md` contains the anchor text `selected text`
+    And `comments.md` contains the anchor kind `added`
     And `comments.md` contains the body for comment `c1`
+    And section Markdown does not need an inline marker for comment `c1`
 
   Scenario: Figures are extracted as first-class assets
     Given a DOCX fixture contains an embedded figure with a caption
@@ -285,15 +295,15 @@ Feature: Audit revealed Word content against Markdown sources
     When `redline audit` runs in the workspace
     Then the audit report lists section `introduction`
     And the report shows the changed text
-    And the report includes a stable anchor when possible
-    And the report is available in Markdown and JSON forms
+    And the report points to a reproducible VCS diff command
+    And the command exits with a difference status for automation
 
-  Scenario: Audit distinguishes tracked Word changes from inferred untracked changes
+  Scenario: Audit distinguishes reveal diffs from source divergence
     Given a reveal workspace contains tracked Word changes
     And the current Markdown contains an additional edit not represented by tracked Word changes
     When `redline audit` runs in the workspace
-    Then the audit report labels Word-tracked changes as `tracked`
-    And the audit report labels Markdown-only differences as `inferred`
+    Then the normal reveal VCS diff remains available as old-to-new Word review
+    And the audit VCS diff identifies Markdown-source divergence separately
 
   Scenario: Audit warns when a collaborator edited without track changes
     Given a newly received DOCX differs from the previous revealed accepted content
@@ -309,47 +319,34 @@ Feature: Audit revealed Word content against Markdown sources
     Then Redline matches the moved section by content similarity where safe
     And the audit report records the section match confidence
 
-## Phase 5: better diff semantics
+## Phase 5: better VCS diff quality
 
-Feature: Normalize noisy Word tracked changes into readable review changes
+Feature: Normalize noisy Word XML into readable VCS diffs
 
-  Scenario: Adjacent insertions by the same author are merged
+  Scenario: Adjacent inserted runs produce readable added text
     Given Word XML contains adjacent insertion runs
-    And the runs share the same author and timestamp
-    When Redline normalizes changes
-    Then one insertion change is produced
-    And the inserted text preserves the original order
+    When Redline writes old and new section snapshots
+    Then the new section contains the inserted text in order
+    And the VCS diff shows a readable added line or hunk
 
-  Scenario: Adjacent deletions by the same author are merged
+  Scenario: Adjacent deleted runs produce readable removed text
     Given Word XML contains adjacent deletion runs
-    And the runs share the same author and timestamp
-    When Redline normalizes changes
-    Then one deletion change is produced
-    And the deleted text preserves the original order
+    When Redline writes old and new section snapshots
+    Then the old section contains the deleted text in order
+    And the VCS diff shows a readable removed line or hunk
 
   Scenario: Formatting-only noise is collapsed when possible
     Given Word XML splits unchanged text into multiple runs only because of formatting
     When Redline normalizes text runs
     Then the Markdown output does not expose formatting-only run boundaries
-    And no content change is emitted for formatting-only differences unless configured
+    And no VCS content change is emitted for formatting-only differences unless configured
 
-  Scenario: Replacement is detected from nearby delete and insert changes
+  Scenario: Replacement remains readable in the VCS diff
     Given a deletion immediately precedes an insertion in the same sentence
-    When Redline normalizes changes
-    Then the change can be represented as a replacement when confidence is high
-    And the original deletion and insertion remain traceable in structured data
-
-  Scenario: Move operations are distinguished from insert/delete pairs when Word data allows
-    Given Word XML contains `moveFrom` and `moveTo` elements with matching move identifiers
-    When Redline normalizes changes
-    Then the change is classified as `move`
-    And source and destination anchors are preserved
-
-  Scenario: Sentence-level context is reconstructed around each change
-    Given a tracked change occurs inside a sentence
-    When Redline emits review data
-    Then the change includes sentence-level surrounding context
-    And the context is deterministic across repeated runs
+    When Redline writes old and new section snapshots
+    Then the old snapshot contains the deleted text
+    And the new snapshot contains the inserted text
+    And the old-to-new difference remains visible through `jj diff` or `git diff`
 
 ## Phase 6: comment accuracy
 
@@ -374,6 +371,25 @@ Feature: Resolve Word comment anchors accurately
     When Redline resolves comment anchors
     Then the anchor range includes all selected paragraphs in order
     And the comment report identifies the starting section
+
+  Scenario: A comment range anchored to inserted text records added kind
+    Given a comment range is inside a Word `w:ins` element
+    When Redline resolves comment anchors
+    Then the comment anchor text equals the inserted selected text
+    And the comment anchor kind is `added`
+
+  Scenario: A comment range anchored to deleted text records deleted kind
+    Given a comment range is inside a Word `w:del` element
+    When Redline resolves comment anchors
+    Then the comment anchor text equals the deleted selected text
+    And the comment anchor kind is `deleted`
+
+  Scenario: A comment range crossing normal and changed text records mixed kind
+    Given a comment range starts in normal text
+    And the same comment range continues through inserted or deleted text
+    When Redline resolves comment anchors
+    Then the comment anchor text includes all selected text in order
+    And the comment anchor kind is `mixed`
 
   Scenario: Broken comment ranges fall back to nearby text
     Given `word/comments.xml` contains a comment
@@ -465,10 +481,10 @@ Feature: Build a clean Word document from Markdown sources
     And the generated DOCX uses the configured styles where Pandoc supports them
 
   Scenario: Disappear emits a clean DOCX without review markup by default
-    Given Markdown sources contain Redline insertion and deletion markers
+    Given Markdown sources come from accepted section files
     When `redline disappear` builds a clean DOCX with default options
     Then the generated DOCX does not contain review markup
-    And accepted text appears according to the configured review policy
+    And accepted text appears in the generated document
 
   Scenario: Generated DOCX checks are structural rather than byte-for-byte
     Given `redline disappear` generated `final.docx`
@@ -509,7 +525,7 @@ Feature: Improve everyday Redline workflows
     And the command exit status follows the documented warning policy
 
   Scenario: HTML preview renders a reveal workspace
-    Given a reveal workspace contains Markdown sections and review metadata
+    Given a reveal workspace contains Markdown sections and comment metadata
     When Redline generates an HTML preview
     Then the preview contains section content
     And the preview shows tracked changes and comments clearly
@@ -606,19 +622,19 @@ Feature: Use Pandoc as a normalization aid without losing Redline source truth
     Then the accepted Markdown contains the collaborator-visible current text
     And media is extracted to the configured figures directory
 
-  Scenario: Review-preserving Pandoc extraction captures review spans
+  Scenario: Rejected-content Pandoc extraction can build the old snapshot
     Given Pandoc is available
-    And a DOCX contains insertions, deletions, and comments
-    When Redline runs Pandoc with `--track-changes=all`
-    Then the review Markdown contains review-preserving spans or markers
-    And Redline can map those spans into its own review markup
+    And a DOCX contains tracked changes
+    When Redline runs Pandoc with `--track-changes=reject`
+    Then the rejected Markdown contains the old pre-review text
+    And Redline can use that output as the VCS snapshot baseline
 
-  Scenario: Pandoc AST extraction provides structured review hints
+  Scenario: Pandoc AST extraction provides structured content hints
     Given Pandoc is available
-    And Markdown spans are too fragile for a fixture
-    When Redline runs Pandoc with `--to json --track-changes=all`
-    Then Redline parses Pandoc AST `Span` or `Div` classes for review data
-    And reconciles AST hints with custom DOCX XML extraction
+    And Markdown output is too fragile for a fixture
+    When Redline runs Pandoc with `--to json --track-changes=accept`
+    Then Redline parses the Pandoc AST for document structure
+    And does not treat the AST as an authoritative review-diff format
 
   Scenario: Pandoc output differences are recorded by version
     Given Pandoc is used during extraction or generation
@@ -639,14 +655,14 @@ Feature: Parse additional DOCX parts as they become relevant
   Scenario: Header and footer content is parsed or explicitly warned about
     Given a DOCX contains tracked changes or comments in headers or footers
     When Redline processes the DOCX
-    Then supported header/footer content is included in review data
-    And unsupported header/footer review data emits an explicit warning
+    Then supported header/footer content is included in the VCS snapshots or comment report
+    And unsupported header/footer review content emits an explicit warning
 
   Scenario: Footnotes and endnotes are parsed or explicitly warned about
-    Given a DOCX contains footnotes or endnotes with review data
+    Given a DOCX contains footnotes or endnotes with tracked changes or comments
     When Redline processes the DOCX
-    Then supported note content is included in review data
-    And unsupported note review data emits an explicit warning
+    Then supported note content is included in the VCS snapshots or comment report
+    And unsupported note review content emits an explicit warning
 
   Scenario: Numbering and list styles render deterministically
     Given a DOCX contains ordered and unordered lists
@@ -665,22 +681,22 @@ Feature: Optional review workflow extensions
     And unsupported annotations are reported explicitly
 
   Scenario: Export review comments for GitHub PRs
-    Given a reveal workspace contains comments and source-map data
+    Given a reveal workspace contains comments with anchor metadata
     When Redline exports GitHub PR comments
     Then each exported comment references the closest Markdown source location
     And comments without reliable locations are included in a summary
 
-  Scenario: Review changes can be tagged by severity
-    Given review metadata contains changes and comments
+  Scenario: Review comments can be tagged by severity
+    Given comment metadata contains reviewer comments
     When a user assigns severity tags
     Then tags are stored in machine-readable metadata
     And Markdown reports include the tags
 
   Scenario: LLM summary is generated from review activity
-    Given a reveal workspace contains changes and comments
+    Given a reveal workspace contains a VCS diff and comments
     When an optional LLM summary command runs
-    Then the summary cites the source changes and comments used
-    And the original review data remains unchanged
+    Then the summary cites the VCS diff and comments used
+    And the original comments remain unchanged
 
   Scenario: Managed Pandoc installation is reported or assisted
     Given Pandoc is missing

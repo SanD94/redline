@@ -22,7 +22,7 @@ func TestRenderSection(t *testing.T) {
 
 func TestRenderComments(t *testing.T) {
 	got := RenderComments(&model.RevealResult{Comments: []model.Comment{
-		{ID: 4, Author: "Reviewer", Date: "2026-06-09T13:01:00Z", Text: "Nice comment.", SectionID: "discussion"},
+		{ID: 4, Author: "Reviewer", Date: "2026-06-09T13:01:00Z", Text: "Nice comment.", SectionID: "discussion", AnchorKind: "normal", AnchorText: "commented text"},
 		{ID: 5, ParentID: 4, Author: "Reviewer", Text: "Reply."},
 	}})
 
@@ -32,6 +32,8 @@ func TestRenderComments(t *testing.T) {
 		"- **Author:** Reviewer",
 		"- **Date:** 2026-06-09T13:01:00Z",
 		"- **Section:** `discussion`",
+		"- **Anchor kind:** normal",
+		"- **Anchor text:** commented text",
 		"- **Text:** Nice comment.",
 		"## Comment 5",
 		"- **Parent:** Comment 4",

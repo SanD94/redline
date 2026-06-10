@@ -8,12 +8,12 @@ Core must-have:
 
 1. Extract tracked diff changes.
 2. Extract text comments.
-3. Split Word documents into title-wise Markdown, references, figures, and review metadata.
+3. Split Word documents into title-wise Markdown, references, figures, comments, and source metadata.
 4. Rebuild or patch Word documents from Markdown sources and their assets.
 
-Project goal: let teams keep writing and reviewing in Word while the source-of-truth workflow stays in Markdown + git.
+Project goal: let teams keep writing and reviewing in Word while the source-of-truth workflow stays in Markdown plus the local VCS.
 
-Implementation goal: build the CLI in Go, using Pandoc where it is strong at document conversion and keeping custom Go code for DOCX review extraction, workspace state, diffing, and safe patch orchestration.
+Implementation goal: build the CLI in Go, using Pandoc where it is strong at document conversion, and keeping custom Go code for DOCX review extraction, workspace state, VCS orchestration, and safe patch orchestration. Redline should not duplicate the VCS diff system with a separate tracked-change diff format.
 
 ## CLI Shape
 
@@ -52,8 +52,8 @@ Outputs:
 - normalized Markdown document
 - title-wise Markdown section files
 - extracted figures and references
-- machine-readable change list
-- machine-readable comment list
+- VCS diff between old and new revealed document states
+- Markdown comment report
 - optional merged review report
 - patched copy of a received `.docx`
 - clean generated `.docx` from Markdown sources
@@ -61,6 +61,7 @@ Outputs:
 ## Guiding Rules
 
 - Preserve review intent, not Word layout noise.
+- Treat `jj` or `git` as a first-class hard dependency for review diffs.
 - Prefer stable Markdown output over perfect visual reproduction.
 - Use Pandoc for Markdown-to-DOCX generation before writing custom DOCX rendering code.
 - Keep source mapping so user can trace Markdown item back to DOCX location.
@@ -68,7 +69,7 @@ Outputs:
 - Never overwrite a collaborator's original Word file; patch or generate copies only.
 - Treat Markdown as the durable source of truth, but keep enough Word metadata to round-trip safely.
 - References, figures, captions, and section boundaries are first-class content, not attachments after the fact.
-- Keep the Go core independent from Pandoc-specific assumptions so extraction and audit still work when Pandoc is unavailable.
+- Keep the Go core independent from Pandoc-specific assumptions where practical, while treating VCS and Pandoc as system tools Redline is allowed to rely on.
 
 ## Phase 1: `redline reveal` Smallest Useful Slice
 
@@ -80,27 +81,27 @@ Deliver working CLI that can divide a `.docx` into a redline workspace:
 4. Detect comments and comment anchors.
 5. Detect title or heading boundaries.
 6. Extract body text into title-wise Markdown files.
-7. Emit Markdown report plus machine-readable review data.
+7. Emit Markdown outputs and rely on the VCS diff for tracked-change information.
 
 Success criteria:
 
 - one sample file in, one redline workspace out
 - insertions and deletions visible in output
-- comments attached to nearby text
+- comments attached at least to nearby sections
 - sections split by title or heading
 - output stable across repeated runs
 
-## Phase 2: Reliable Review Model
+## Phase 2: Reliable Comment And Source Model
 
-Build internal normalized model before richer output.
+Build a small internal model for things VCS cannot represent by itself: comments, anchors, sections, source pointers, warnings, and output layout. Do not build a parallel tracked-change diff model.
 
 Suggested entities:
 
 - `DocumentBlock`
 - `TextRun`
-- `Change`
 - `Comment`
 - `AnchorRange`
+- `Warning`
 
 Each extracted item should carry:
 
@@ -111,7 +112,7 @@ Each extracted item should carry:
 - raw DOCX xml pointer or path
 - surrounding text context
 
-Reason: once model stable, Markdown/JSON/HTML exports become easy.
+Reason: comments and source pointers need deterministic identity, while insertions and deletions should be expressed by the VCS diff between old and new workspace snapshots.
 
 ## Phase 3: Markdown-First Output
 
@@ -119,48 +120,48 @@ Primary export formats:
 
 1. `sections/<slug>.md`
 2. `document.md`
-3. `changes.md`
-4. `comments.md`
-5. `figures/`
-6. `references.*`
+3. `comments.md`
+4. `figures/`
+5. `references.*`
+6. optional warning/source metadata for unsupported structures
 
 Suggested render rules:
 
-- insertion: `[++ added text ++]`
-- deletion: `[-- removed text --]`
-- comment reference: inline marker like `[^c1]selected text[$c1]`
-- comment body: footnote or review appendix
+- Do not render tracked insertions/deletions with a Redline-specific inline syntax by default.
+- Render old and new document states as normal Markdown and let `jj diff` or `git diff` show changes.
+- Render comment bodies and anchor metadata in `comments.md`.
+- Inline comment markers are orthogonal to the VCS-first reveal flow and can be added later for editor/plugin UX.
 
 Need config for compact vs verbose mode.
 
 ## Phase 4: `redline audit` Safety Diff
 
-Track changes may be missing or incomplete, so Redline needs a fallback comparison step.
+Track changes may be missing or incomplete, so Redline needs a fallback comparison workflow. The fallback should still be VCS-based: create or update a revealed snapshot and let `jj`/`git` show the difference against the user's Markdown sources.
 
 Tasks:
 
 1. Use the output of `redline reveal <file.docx>` as the Word-side snapshot.
 2. Compare revealed current Word content against current Markdown sources.
 3. Report differences by section with stable anchors where possible.
-4. Distinguish tracked Word changes from inferred untracked changes.
+4. Distinguish the normal reveal old-to-new VCS diff from audit diffs against existing Markdown sources.
 5. Warn when a collaborator appears to have edited without enabling track changes.
 
 Success criteria:
 
 - user can detect untracked Word edits before accepting or overwriting anything
-- audit output is readable in Markdown and machine-readable in JSON
+- audit output points to reproducible `jj` or `git` commands and has useful exit status for automation
 - section-level matching survives minor heading or paragraph movement
 
-## Phase 5: Better Diff Semantics
+## Phase 5: Better VCS Diff Quality
 
-Word tracked changes often split text into many tiny XML runs. Need normalization layer.
+Word tracked changes often split text into many tiny XML runs. Redline should improve the old/new Markdown snapshots so the VCS diff is readable, rather than creating its own diff engine.
 
 Tasks:
 
-1. Merge adjacent runs from same change.
+1. Normalize whitespace and paragraph boundaries before writing snapshots.
 2. Collapse formatting-only noise when possible.
-3. Reconstruct sentence-level context around each change.
-4. Distinguish insertion, deletion, move, replacement when data allows.
+3. Keep sentence and paragraph context stable so VCS hunks are readable.
+4. Represent moves by stable section files and normal VCS moved-line detection where possible.
 
 This phase matters because raw XML extraction alone will make ugly Markdown.
 
@@ -231,7 +232,7 @@ High-value add-ons:
 
 Language and runtime:
 
-- Go is the implementation language for the CLI, core model, DOCX archive/XML parsing, workspace management, diffing, and command orchestration.
+- Go is the implementation language for the CLI, core model, DOCX archive/XML parsing, workspace management, VCS orchestration, and command wiring.
 - Pandoc is an external dependency for high-quality Markdown-to-DOCX conversion, especially for `redline disappear` and possibly parts of `redline imprint`.
 - The CLI should detect Pandoc availability with `pandoc --version` and produce clear errors when commands need it.
 - Quarto CLI is useful as an architecture reference, but Redline should stay much smaller: no execution engines, no notebooks, no website/project publishing layer, and no large extension system.
@@ -244,11 +245,10 @@ Suggested structure:
 4. `internal/model` — normalized review objects
 5. `internal/workspace` — redline workspace layout and source mapping
 6. `internal/render/markdown` — Markdown output
-7. `internal/render/json` — structured output
+7. `internal/render/json` — optional diagnostics/status output, not tracked-change diffs
 8. `internal/pandoc` — Pandoc discovery and invocation wrapper
 9. `internal/patchdocx` — safe DOCX-copy patching
-10. `internal/diff` — tracked and inferred difference model
-11. `internal/cli` — command wiring and user-facing errors
+10. `internal/cli` — command wiring and user-facing errors
 
 Keep parser pure where possible. IO only at edges.
 
@@ -271,15 +271,15 @@ Pandoc responsibilities:
 
 Go responsibilities:
 
-1. Extract tracked changes and comments from DOCX XML because Pandoc does not preserve enough review metadata for Redline's core purpose.
+1. Extract old and new text states plus comments from DOCX XML because Pandoc does not preserve enough comment and anchor metadata for Redline's core purpose.
 2. Split revealed Word content into stable section files.
-3. Maintain source maps, review JSON, warnings, and deterministic workspace output.
-4. Compare Word snapshots against Markdown sources.
+3. Maintain comment anchors, warnings, and deterministic workspace output.
+4. Orchestrate VCS snapshots and point users to reproducible VCS diff commands.
 5. Decide when to call Pandoc and validate the files it produces.
 
 ## Pandoc-Assisted Extraction Plan
 
-Pandoc can help with DOCX extraction, but it should not be the only source of truth for review metadata. Use it as a normalization engine, then augment or verify with custom Go XML parsing.
+Pandoc can help with DOCX extraction, but it should not become a second review-diff system. Use it as a conversion/normalization engine where it improves Markdown quality, then rely on VCS for old/new diffs and custom Go XML parsing for comments and anchors.
 
 ### `redline reveal` extraction pipeline
 
@@ -297,31 +297,31 @@ Pandoc can help with DOCX extraction, but it should not be the only source of tr
 
    This gives Redline the collaborator's current visible document text, extracted media, and style hints.
 
-3. Run Pandoc in review-preserving mode:
+3. Optionally run Pandoc in rejected-content mode when it can produce better old snapshots than the Go text extractor:
 
    ```sh
    pandoc input.docx \
      --from docx+styles \
      --to markdown \
-     --track-changes=all \
+     --track-changes=reject \
      --extract-media <workspace>/figures \
-     --output <temp>/review.md
+     --output <temp>/old.md
    ```
 
-   Pandoc emits insertions, deletions, comments, and paragraph insert/delete markers as spans/classes. Redline can translate these into its own Markdown review syntax.
+   Redline can snapshot this old state and then write the accepted state. The VCS diff remains the review surface.
 
-4. Optionally run Pandoc to JSON for a more structured intermediate form when Markdown spans are too fragile:
+4. Optionally run Pandoc to JSON for a more structured content intermediate form when Markdown output is too fragile:
 
    ```sh
    pandoc input.docx \
      --from docx+styles \
      --to json \
-     --track-changes=all \
+     --track-changes=accept \
      --extract-media <workspace>/figures \
      --output <temp>/review.ast.json
    ```
 
-   The Go CLI can parse Pandoc's AST JSON to find `Span` and `Div` classes such as `insertion`, `deletion`, `comment-start`, `comment-end`, `paragraph-insertion`, and `paragraph-deletion`.
+   The Go CLI can parse Pandoc's AST JSON for document structure, not as the authoritative tracked-change diff.
 
 5. Parse DOCX XML directly in Go to recover data Pandoc may flatten or omit:
 
@@ -329,17 +329,17 @@ Pandoc can help with DOCX extraction, but it should not be the only source of tr
    - comment range ids and anchors from `word/document.xml`
    - relationship ids for media and hyperlinks
    - raw Word XML pointers for source maps
-   - author and timestamp fields on change elements
+   - enough tracked-change structure to reconstruct old and accepted text states
 
-6. Reconcile the Pandoc output and Go XML model into Redline's normalized model.
+6. Reconcile the Pandoc output and Go XML model into stable old/new Markdown snapshots plus comment metadata.
 7. Split accepted content into `sections/<slug>.md` using heading/title boundaries.
-8. Write `document.md`, `changes.md`, `comments.md`, `source-map.json`, extracted `figures/`, and warnings.
+8. Snapshot old output with VCS, write accepted output, then write `document.md`, `comments.md`, extracted `figures/`, and warnings/diagnostics as needed.
 
 ### Why combine Pandoc and custom XML parsing?
 
 - Pandoc is good at turning messy DOCX body content into readable Markdown and extracting media.
-- Pandoc's `--track-changes=all` is useful for scripting review markup, but its output is not a complete source map back to Word XML.
-- Custom Go XML parsing is necessary for deterministic anchors, exact comments, safer audit diffs, and future DOCX patching.
+- Pandoc's accepted/rejected tracked-change modes can help produce clean old/new snapshots, but Redline should not translate them into its own diff notation.
+- Custom Go XML parsing is necessary for deterministic anchors, exact comments, safe snapshot construction, and future DOCX patching.
 - The accepted-content Pandoc output is ideal for `redline audit`, because it represents what a collaborator would see after accepting tracked changes.
 
 ### Pandoc defaults files
@@ -358,15 +358,15 @@ bibliography: references.bib
 metadata-file: /tmp/redline-metadata.yml
 ```
 
-For extraction commands, defaults can include `from: docx+styles`, `to: markdown` or `to: json`, `track-changes: all`, and `extract-media: <dir>`.
+For extraction commands, defaults can include `from: docx+styles`, `to: markdown` or `to: json`, `track-changes: accept` or `track-changes: reject`, and `extract-media: <dir>`.
 
 ### Minimum Pandoc experiments before implementation
 
 Create fixtures and record Pandoc outputs for:
 
-1. DOCX with insertion, deletion, replacement, and comments using `--track-changes=all` to Markdown.
-2. Same file using `--track-changes=accept` to Markdown.
-3. Same file using `--track-changes=all --to json`.
+1. DOCX with insertion, deletion, replacement, and comments using `--track-changes=accept` to Markdown.
+2. Same file using `--track-changes=reject` to Markdown.
+3. Same file using `--track-changes=accept --to json` and `--track-changes=reject --to json`.
 4. DOCX with custom Word styles using `--from docx+styles`.
 5. DOCX with figures and captions using `--extract-media`.
 6. Markdown with figures, citations, and a reference doc converted back to `.docx`.
@@ -399,7 +399,7 @@ WordprocessingML elements likely needed:
 
 1. Word XML noisy; naive extraction will fragment text.
 2. Comments may anchor to ranges crossing multiple runs.
-3. Tables, footnotes, headers may hide review data.
+3. Tables, footnotes, headers may hide comments or content that should appear in VCS snapshots.
 4. Different Word producers may emit slightly different XML.
 5. Untracked collaborator edits may look like intentional Markdown divergence.
 6. Full DOCX round-trip fidelity is hard; patching must be conservative.
@@ -452,12 +452,12 @@ Current workspace output:
 
 - `sections/<section-id>.md` — current/new accepted section text.
 - `manifest.json` — deterministic section ordering with id, title, and heading level.
-- `comments.md` — Markdown comment report when comments exist.
+- `comments.md` — Markdown comment report, always written even when no comments exist.
 
 Current known gaps relative to the full roadmap:
 
-- No `document.md`, `changes.md`, `source-map.json`, `figures/`, or references extraction yet.
-- No Pandoc-assisted accepted/review AST extraction yet.
+- No `document.md`, `figures/`, references extraction, or diagnostics output yet.
+- No Pandoc-assisted accepted/rejected extraction yet.
 - No table, figure, bibliography, footnote, header, or footer extraction yet.
 - No `audit`, `imprint`, `disappear`, `check`, or `pandoc` commands yet.
 
@@ -468,7 +468,7 @@ Behavior specifications and test scenarios live in `BDD.md`.
 Project first real release ready when:
 
 1. CLI converts representative `.docx` files to Markdown.
-2. tracked changes readable in git diff.
+2. tracked changes readable in VCS diff.
 3. comments preserved with clear anchors.
 4. failures reported clearly when document uses unsupported structures.
 5. outputs deterministic enough for CI and version control.

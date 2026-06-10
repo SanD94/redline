@@ -44,6 +44,12 @@ func RenderComments(result *model.RevealResult) string {
 		if cmt.SectionID != "" {
 			b.WriteString(fmt.Sprintf("- **Section:** `%s`\n", cmt.SectionID))
 		}
+		if cmt.AnchorKind != "" {
+			b.WriteString(fmt.Sprintf("- **Anchor kind:** %s\n", cmt.AnchorKind))
+		}
+		if cmt.AnchorText != "" {
+			b.WriteString(fmt.Sprintf("- **Anchor text:** %s\n", cmt.AnchorText))
+		}
 		b.WriteString(fmt.Sprintf("- **Text:** %s\n\n", cmt.Text))
 	}
 

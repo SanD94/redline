@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -37,6 +38,33 @@ func TestRunRevealSampleDocxPhase1OutputAndDeterminism(t *testing.T) {
 
 	assertSampleWorkspace(t, outA)
 	assertWorkspaceOutputsEqual(t, outA, outB)
+}
+
+func TestRunRevealWritesCommentsReportWhenNoCommentsExist(t *testing.T) {
+	if _, err := exec.LookPath("jj"); err != nil {
+		if _, err := exec.LookPath("git"); err != nil {
+			t.Skip("redline reveal currently needs jj or git for the old-version snapshot")
+		}
+	}
+
+	docxPath := filepath.Join(t.TempDir(), "no-comments.docx")
+	writeCliTestDocx(t, docxPath, map[string]string{
+		"word/document.xml": `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Plain text.</w:t></w:r></w:p></w:body></w:document>`,
+		"word/styles.xml":   `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
+	})
+	out := filepath.Join(t.TempDir(), "out")
+
+	if err := RunReveal([]string{docxPath, "--output", out}); err != nil {
+		t.Fatalf("RunReveal() error = %v", err)
+	}
+
+	commentsData, err := os.ReadFile(filepath.Join(out, "comments.md"))
+	if err != nil {
+		t.Fatalf("read comments.md: %v", err)
+	}
+	if got, want := string(commentsData), "# Comments\n\nNo comments found.\n"; got != want {
+		t.Fatalf("comments.md = %q, want %q", got, want)
+	}
 }
 
 func assertSampleWorkspace(t *testing.T, dir string) {
@@ -95,11 +123,12 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 	}
 	comments := string(commentsData)
 	for _, want := range []string{
-		"## Comment 4",
-		"## Comment 5",
-		"## Comment 6",
-		"## Comment 7",
 		"- **Section:** `discussion`",
+		"- **Anchor kind:** normal",
+		"- **Anchor kind:** added",
+		"- **Anchor kind:** deleted",
+		"- **Text:** Nice comment on deleted text.",
+		"- **Text:** Nice comment on added text.",
 		"- **Text:** Nice comment.",
 		"- **Text:** Comment within a comment",
 		"- **Text:** Isn’t it?",
@@ -182,5 +211,28 @@ func repoRoot(t *testing.T) string {
 			t.Fatal("could not find repo root")
 		}
 		dir = parent
+	}
+}
+
+func writeCliTestDocx(t *testing.T, path string, files map[string]string) {
+	t.Helper()
+
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create test docx: %v", err)
+	}
+	defer f.Close()
+
+	zw := zip.NewWriter(f)
+	defer zw.Close()
+
+	for name, content := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create zip entry %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("write zip entry %s: %v", name, err)
+		}
 	}
 }
