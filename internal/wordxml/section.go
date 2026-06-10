@@ -8,9 +8,8 @@ import (
 	"github.com/SanD94/redline/internal/model"
 )
 
-func buildSections(paras []paraData, headingStyles map[string]int) ([]model.Section, model.SourceMap) {
+func buildSections(paras []paraData, headingStyles map[string]int) []model.Section {
 	var sections []model.Section
-	sourceMap := make(model.SourceMap)
 	sectionID := 0
 
 	var currentSection *model.Section
@@ -27,9 +26,6 @@ func buildSections(paras []paraData, headingStyles map[string]int) ([]model.Sect
 		}
 		sectionID++
 		currentSection = &sec
-		sourceMap[id] = model.SourceLocation{
-			DocxPath: fmt.Sprintf("word/document.xml#heading-%s", id),
-		}
 	}
 
 	startSection("")
@@ -69,7 +65,7 @@ func buildSections(paras []paraData, headingStyles map[string]int) ([]model.Sect
 		})
 	}
 
-	return sections, sourceMap
+	return sections
 }
 
 func headingLevel(styleID string, headingStyles map[string]int) int {

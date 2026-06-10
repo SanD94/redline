@@ -72,7 +72,6 @@ func RunReveal(args []string) error {
 	}
 
 	os.Remove(filepath.Join(opts.OutputDir, "comments.md"))
-	os.Remove(filepath.Join(opts.OutputDir, "review.json"))
 	os.Remove(filepath.Join(opts.OutputDir, "manifest.json"))
 
 	fmt.Fprintf(os.Stderr, "saving old version as snapshot...\n")
@@ -97,9 +96,6 @@ func RunReveal(args []string) error {
 		if err := wr.WriteComments(newResult); err != nil {
 			return fmt.Errorf("write comments: %w", err)
 		}
-		if err := wr.WriteJSON(newResult); err != nil {
-			return fmt.Errorf("write review json: %w", err)
-		}
 	}
 
 	fmt.Fprintf(os.Stderr, "  comments: %d\n", len(newResult.Comments))
@@ -109,7 +105,6 @@ func RunReveal(args []string) error {
 	fmt.Fprintf(os.Stderr, "  manifest.json — section ordering and hierarchy\n")
 	if len(newResult.Comments) > 0 {
 		fmt.Fprintf(os.Stderr, "  comments.md   — comment report with section references\n")
-		fmt.Fprintf(os.Stderr, "  review.json   — structured review data\n")
 	}
 
 	diffCmd := vcsMgr.DiffCmd()

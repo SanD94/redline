@@ -10,28 +10,23 @@ import (
 )
 
 type parser struct {
-	decoder          *xml.Decoder
-	changes          []model.Change
-	openComments     map[int]bool
-	headingStyles    map[string]int
-	paraIdx          int
-	changeParaIdx    map[int]int
-	commentParaIdx   map[int]int
-	version          model.VersionMode
+	decoder        *xml.Decoder
+	openComments   map[int]bool
+	headingStyles  map[string]int
+	paraIdx        int
+	commentParaIdx map[int]int
+	version        model.VersionMode
 }
 
 type paraData struct {
-	style    string
-	text     string
-	changeID int
-	ct       model.ChangeType
+	style string
+	text  string
 }
 
 func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte, version model.VersionMode) (*model.RevealResult, error) {
 	p := &parser{
 		openComments:   make(map[int]bool),
 		headingStyles:  make(map[string]int),
-		changeParaIdx:  make(map[int]int),
 		commentParaIdx: make(map[int]int),
 		version:        version,
 	}
@@ -43,19 +38,14 @@ func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte, vers
 		return nil, fmt.Errorf("parse body: %w", err)
 	}
 
-	sections, sourceMap := buildSections(paras, p.headingStyles)
-	p.assignLocations(paras, sections, comments)
+	sections := buildSections(paras, p.headingStyles)
+	p.assignCommentLocations(paras, sections, comments)
 
 	result := &model.RevealResult{
-		Sections:  sections,
-		Changes:   p.changes,
-		Comments:  comments,
-		SourceMap: sourceMap,
+		Sections: sections,
+		Comments: comments,
 	}
 
-	if result.Changes == nil {
-		result.Changes = []model.Change{}
-	}
 	if result.Comments == nil {
 		result.Comments = []model.Comment{}
 	}
@@ -120,7 +110,7 @@ func (p *parser) readBody() ([]paraData, error) {
 	}
 }
 
-func (p *parser) assignLocations(paras []paraData, sections []model.Section, comments []model.Comment) {
+func (p *parser) assignCommentLocations(paras []paraData, sections []model.Section, comments []model.Comment) {
 	paraToSection := make([]string, len(paras)+2)
 	secIdx := 0
 
@@ -131,14 +121,6 @@ func (p *parser) assignLocations(paras []paraData, sections []model.Section, com
 		}
 		if secIdx < len(sections) {
 			paraToSection[i+1] = sections[secIdx].ID
-		}
-	}
-
-	for i := range p.changes {
-		if paraIdx, ok := p.changeParaIdx[p.changes[i].ID]; ok {
-			if paraIdx < len(paraToSection) {
-				p.changes[i].SectionID = paraToSection[paraIdx]
-			}
 		}
 	}
 
