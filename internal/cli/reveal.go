@@ -3,11 +3,11 @@ package cli
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/SanD94/redline/internal/docx"
 	"github.com/SanD94/redline/internal/model"
+	"github.com/SanD94/redline/internal/vcs"
 	"github.com/SanD94/redline/internal/wordxml"
 	"github.com/SanD94/redline/internal/workspace"
 )
@@ -15,81 +15,6 @@ import (
 type RevealOptions struct {
 	InputPath string
 	OutputDir string
-}
-
-type vcsManager struct {
-	dir string
-	vcs string // "jj" or "git"
-}
-
-func detectVCS(dir string) (*vcsManager, error) {
-	if hasDir(filepath.Join(dir, ".jj")) || hasDir(filepath.Join(dir, ".git")) {
-		if hasCommand("jj") {
-			return &vcsManager{dir: dir, vcs: "jj"}, nil
-		}
-		return &vcsManager{dir: dir, vcs: "git"}, nil
-	}
-
-	if hasCommand("jj") {
-		cmd := exec.Command("jj", "git", "init", dir)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("jj git init: %w\n%s", err, out)
-		}
-		return &vcsManager{dir: dir, vcs: "jj"}, nil
-	}
-
-	if hasCommand("git") {
-		cmd := exec.Command("git", "init", dir)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("git init: %w\n%s", err, out)
-		}
-		return &vcsManager{dir: dir, vcs: "git"}, nil
-	}
-
-	return nil, fmt.Errorf("neither jj nor git found on PATH")
-}
-
-func (v *vcsManager) Snapshot(msg string) error {
-	switch v.vcs {
-	case "jj":
-		cmd := exec.Command("jj", "commit", "-m", msg)
-		cmd.Dir = v.dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("jj commit: %w\n%s", err, out)
-		}
-	case "git":
-		add := exec.Command("git", "add", "-A")
-		add.Dir = v.dir
-		if out, err := add.CombinedOutput(); err != nil {
-			return fmt.Errorf("git add: %w\n%s", err, out)
-		}
-		commit := exec.Command("git", "commit", "-m", msg)
-		commit.Dir = v.dir
-		if out, err := commit.CombinedOutput(); err != nil {
-			return fmt.Errorf("git commit: %w\n%s", err, out)
-		}
-	}
-	return nil
-}
-
-func (v *vcsManager) DiffCmd() string {
-	switch v.vcs {
-	case "jj":
-		return "jj diff"
-	case "git":
-		return "git diff --no-color"
-	}
-	return ""
-}
-
-func hasCommand(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
-}
-
-func hasDir(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 func RunReveal(args []string) error {
@@ -127,11 +52,11 @@ func RunReveal(args []string) error {
 		return fmt.Errorf("create workspace dir: %w", err)
 	}
 
-	vcs, err := detectVCS(opts.OutputDir)
+	vcsMgr, err := vcs.Detect(opts.OutputDir)
 	if err != nil {
 		return fmt.Errorf("vcs init: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "  vcs: %s\n", vcs.vcs)
+	fmt.Fprintf(os.Stderr, "  vcs: %s\n", vcsMgr.VCS)
 
 	wr := workspace.NewWriter(opts.OutputDir)
 
@@ -151,7 +76,7 @@ func RunReveal(args []string) error {
 	os.Remove(filepath.Join(opts.OutputDir, "manifest.json"))
 
 	fmt.Fprintf(os.Stderr, "saving old version as snapshot...\n")
-	if err := vcs.Snapshot("redline: old version snapshot"); err != nil {
+	if err := vcsMgr.Snapshot("redline: old version snapshot"); err != nil {
 		return fmt.Errorf("vcs snapshot: %w", err)
 	}
 
@@ -187,11 +112,11 @@ func RunReveal(args []string) error {
 		fmt.Fprintf(os.Stderr, "  review.json   — structured review data\n")
 	}
 
-	diffCmd := vcs.DiffCmd()
+	diffCmd := vcsMgr.DiffCmd()
 	if diffCmd != "" {
 		fmt.Fprintf(os.Stderr, "\nchanges from old to new version:\n")
 		fmt.Fprintf(os.Stderr, "  cd %s && %s\n", opts.OutputDir, diffCmd)
-		if vcs.vcs == "git" {
+		if vcsMgr.VCS == "git" {
 			fmt.Fprintf(os.Stderr, "\n(review staged diff: cd %s && git diff --cached)\n", opts.OutputDir)
 		}
 	}

@@ -21,36 +21,6 @@ func RenderSection(sec model.Section) string {
 	return b.String()
 }
 
-func RenderChanges(result *model.RevealResult) string {
-	var b strings.Builder
-	b.WriteString("# Changes\n\n")
-
-	if len(result.Changes) == 0 {
-		b.WriteString("No tracked changes found.\n")
-		return b.String()
-	}
-
-	for _, ch := range result.Changes {
-		badge := "++"
-		if ch.Type == model.ChangeDeletion {
-			badge = "--"
-		}
-		b.WriteString(fmt.Sprintf("## Change %d (%s)\n\n", ch.ID, string(ch.Type)))
-		if ch.Author != "" {
-			b.WriteString(fmt.Sprintf("- **Author:** %s\n", ch.Author))
-		}
-		if ch.Date != "" {
-			b.WriteString(fmt.Sprintf("- **Date:** %s\n", ch.Date))
-		}
-		if ch.SectionID != "" {
-			b.WriteString(fmt.Sprintf("- **Section:** `%s`\n", ch.SectionID))
-		}
-		b.WriteString(fmt.Sprintf("- **Text:** `[%s%s%s]`\n\n", badge, ch.Text, badge))
-	}
-
-	return b.String()
-}
-
 func RenderComments(result *model.RevealResult) string {
 	var b strings.Builder
 	b.WriteString("# Comments\n\n")
@@ -78,8 +48,4 @@ func RenderComments(result *model.RevealResult) string {
 	}
 
 	return b.String()
-}
-
-func RenderSectionFile(sec model.Section) string {
-	return RenderSection(sec)
 }
