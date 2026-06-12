@@ -13,6 +13,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "commands:\n")
 		fmt.Fprintf(os.Stderr, "  reveal   split a docx into structured markdown and review data\n")
 		fmt.Fprintf(os.Stderr, "  audit    compare current markdown sources to the last reveal baseline\n")
+		fmt.Fprintf(os.Stderr, "  imprint  patch a copy of a received docx from markdown sources\n")
 		os.Exit(1)
 	}
 
@@ -26,6 +27,8 @@ func main() {
 		err = cli.RunReveal(args)
 	case "audit":
 		err = cli.RunAudit(args)
+	case "imprint":
+		err = cli.RunImprint(args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		fmt.Fprintf(os.Stderr, "usage: redline <command> [args]\n")
