@@ -14,6 +14,7 @@ type parser struct {
 	decoder        *xml.Decoder
 	openComments   map[int]bool
 	commentAnchors map[int]*commentAnchor
+	commentRefs    map[int]int
 	headingStyles  map[string]int
 	paraIdx        int
 	commentParaIdx map[int]int
@@ -25,6 +26,7 @@ type parser struct {
 	textRunIdx     int
 	textRunInPara  int
 	version        model.VersionMode
+	warnings       []model.Warning
 }
 
 type paraData struct {
@@ -54,6 +56,7 @@ func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte, vers
 	p := &parser{
 		openComments:   make(map[int]bool),
 		commentAnchors: make(map[int]*commentAnchor),
+		commentRefs:    make(map[int]int),
 		headingStyles:  make(map[string]int),
 		commentParaIdx: make(map[int]int),
 		moves:          make(map[string]*moveData),
@@ -79,6 +82,7 @@ func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte, vers
 		Blocks:       blocks,
 		TextRuns:     runs,
 		AnchorRanges: anchors,
+		Warnings:     p.warnings,
 	}
 
 	if result.Comments == nil {
@@ -177,6 +181,28 @@ func (p *parser) assignCommentLocations(paras []paraData, sections []model.Secti
 			comments[i].AnchorText = anchor.Text.String()
 			comments[i].AnchorKind = anchor.Kind
 			comments[i].AnchorRangeID = stableAnchorID(comments[i].ID)
+		} else if refParaIdx, ok := p.commentRefs[comments[i].ID]; ok {
+			if refParaIdx < len(paraToSection) {
+				comments[i].SectionID = paraToSection[refParaIdx]
+			}
+			comments[i].Context = paraText[refParaIdx]
+			comments[i].AnchorText = paraText[refParaIdx]
+			comments[i].AnchorKind = "fallback"
+			comments[i].AnchorRangeID = stableAnchorID(comments[i].ID)
+			p.warnings = append(p.warnings, model.Warning{
+				ID:            fmt.Sprintf("warning-comment-%d-broken-anchor", comments[i].ID),
+				Type:          "broken-comment-anchor",
+				Message:       fmt.Sprintf("comment %d has no complete range; using nearby paragraph text", comments[i].ID),
+				SourcePointer: commentAnchorSourcePointer(refParaIdx, comments[i].ID),
+				Context:       paraText[refParaIdx],
+			})
+		} else if comments[i].ParentID == 0 {
+			p.warnings = append(p.warnings, model.Warning{
+				ID:            fmt.Sprintf("warning-comment-%d-missing-anchor", comments[i].ID),
+				Type:          "missing-comment-anchor",
+				Message:       fmt.Sprintf("comment %d has no anchor in document.xml", comments[i].ID),
+				SourcePointer: comments[i].SourcePointer,
+			})
 		}
 	}
 }
@@ -211,6 +237,19 @@ func (p *parser) buildSourceModel(paras []paraData, sections []model.Section, co
 	for _, cmt := range comments {
 		anchor, ok := p.commentAnchors[cmt.ID]
 		if !ok {
+			if cmt.AnchorRangeID == "" {
+				continue
+			}
+			paraIdx := p.commentRefs[cmt.ID]
+			anchors = append(anchors, model.AnchorRange{
+				ID:            cmt.AnchorRangeID,
+				CommentID:     cmt.ID,
+				SectionID:     cmt.SectionID,
+				Kind:          cmt.AnchorKind,
+				Text:          cmt.AnchorText,
+				SourcePointer: commentAnchorSourcePointer(paraIdx, cmt.ID),
+				Context:       cmt.Context,
+			})
 			continue
 		}
 		sectionID := cmt.SectionID

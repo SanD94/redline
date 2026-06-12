@@ -57,6 +57,7 @@ func (p *parser) readParagraph(start xml.StartElement) (paraData, error) {
 				p.endCommentAnchor(t)
 				skipToEnd(p.decoder, "commentRangeEnd")
 			case isWordElement(t.Name, "commentReference"):
+				p.noteCommentReference(t)
 				skipToEnd(p.decoder, "commentReference")
 			case isWordElement(t.Name, "bookmarkStart"):
 				skipToEnd(p.decoder, "bookmarkStart")
@@ -147,6 +148,7 @@ func (p *parser) readRun(start xml.StartElement, anchorKind string, emit, useDel
 				p.endCommentAnchor(t)
 				skipToEnd(p.decoder, "commentRangeEnd")
 			case isWordElement(t.Name, "commentReference"):
+				p.noteCommentReference(t)
 				skipToEnd(p.decoder, "commentReference")
 			default:
 				skipToEnd(p.decoder, t.Name.Local)
@@ -180,6 +182,7 @@ func (p *parser) readChangeContent(start xml.StartElement, anchorKind string, em
 				p.endCommentAnchor(t)
 				skipToEnd(p.decoder, "commentRangeEnd")
 			case isWordElement(t.Name, "commentReference"):
+				p.noteCommentReference(t)
 				skipToEnd(p.decoder, "commentReference")
 			default:
 				skipToEnd(p.decoder, t.Name.Local)
@@ -299,6 +302,19 @@ func (p *parser) endCommentAnchor(end xml.StartElement) {
 		return
 	}
 	delete(p.openComments, id)
+}
+
+func (p *parser) noteCommentReference(start xml.StartElement) {
+	id := getIntAttr(start, "id")
+	if id <= 0 {
+		return
+	}
+	if _, ok := p.commentRefs[id]; !ok {
+		p.commentRefs[id] = p.paraIdx
+	}
+	if _, ok := p.commentParaIdx[id]; !ok {
+		p.commentParaIdx[id] = p.paraIdx
+	}
 }
 
 func (p *parser) appendCommentAnchorText(kind, text string) {

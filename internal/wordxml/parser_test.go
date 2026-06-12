@@ -129,6 +129,48 @@ func TestParseCommentsAndThreadLocations(t *testing.T) {
 	}
 }
 
+func TestParseBrokenCommentRangeFallsBackToReferenceParagraph(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Discussion</w:t></w:r></w:p>
+    <w:p>
+      <w:r><w:t>Nearby commented paragraph.</w:t></w:r>
+      <w:r><w:commentReference w:id="7"/></w:r>
+    </w:p>
+  </w:body>
+</w:document>`)
+	commentsXML := []byte(`
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:comment w:id="7"><w:p><w:r><w:t>Broken anchor.</w:t></w:r></w:p></w:comment>
+</w:comments>`)
+	stylesXML := []byte(heading1StylesXML)
+
+	result, err := Parse(documentXML, commentsXML, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if got, want := result.Comments[0].SectionID, "discussion"; got != want {
+		t.Fatalf("comment section = %q, want %q", got, want)
+	}
+	if got, want := result.Comments[0].AnchorKind, "fallback"; got != want {
+		t.Fatalf("comment anchor kind = %q, want %q", got, want)
+	}
+	if got, want := result.Comments[0].AnchorText, "Nearby commented paragraph."; got != want {
+		t.Fatalf("comment anchor text = %q, want %q", got, want)
+	}
+	if got, want := len(result.Warnings), 1; got != want {
+		t.Fatalf("warning count = %d, want %d", got, want)
+	}
+	if got, want := result.Warnings[0].Type, "broken-comment-anchor"; got != want {
+		t.Fatalf("warning type = %q, want %q", got, want)
+	}
+	if got, want := len(result.AnchorRanges), 1; got != want {
+		t.Fatalf("anchor range count = %d, want %d", got, want)
+	}
+}
+
 func TestParseBuildsStableSourceModel(t *testing.T) {
 	documentXML := []byte(`
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
