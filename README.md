@@ -38,6 +38,7 @@ git diff --cached
 - `manifest.json` — deterministic section ordering with id, title, and heading level.
 - `comments.md` — comment report. This file is always written, even when the Word document contains no comments.
 - `review-intent.json` — explicit Word review actions that outcome diffs cannot attribute safely, currently explicit moves.
+- `source-model.json` — stable source model for comments, anchors, paragraph blocks, text runs, source pointers, and warnings.
 
 No separate machine-readable insertion/deletion diff is emitted in the current design. Ordinary tracked-change information belongs in the VCS diff. Explicit Word actions such as moves are preserved as metadata because a VCS outcome diff can show the right final text while attributing the move to the wrong paragraph.
 
@@ -46,6 +47,8 @@ No separate machine-readable insertion/deletion diff is emitted in the current d
 Comment bodies are read from Word's `word/comments.xml`; reply relationships are read from `word/commentsExtended.xml`. Comment ids are currently the ids emitted by Word. If Word starts ids at `1`, Redline preserves and reports those ids as-is.
 
 Comment anchoring records the section, selected anchor text, and whether the selection came from normal, added, deleted, or mixed Word text. Redline does not add inline comment markers to section Markdown yet; that editor/plugin UX is orthogonal to the VCS-first diff workflow.
+
+`source-model.json` contains the machine-readable version of this model. It gives comments and anchor ranges deterministic ids, raw DOCX source pointers, and surrounding paragraph context without creating a separate Redline insertion/deletion diff model.
 
 ## Development
 

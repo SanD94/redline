@@ -21,10 +21,14 @@ type parser struct {
 	moveOrder      []string
 	activeMoveFrom string
 	activeMoveTo   string
+	textRuns       []model.TextRun
+	textRunIdx     int
+	textRunInPara  int
 	version        model.VersionMode
 }
 
 type paraData struct {
+	idx   int
 	style string
 	text  string
 }
@@ -66,11 +70,15 @@ func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte, vers
 	sections := buildSections(paras, p.headingStyles)
 	p.assignCommentLocations(paras, sections, comments)
 	moves := p.buildMoves(paras, sections)
+	blocks, runs, anchors := p.buildSourceModel(paras, sections, comments)
 
 	result := &model.RevealResult{
-		Sections: sections,
-		Comments: comments,
-		Moves:    moves,
+		Sections:     sections,
+		Comments:     comments,
+		Moves:        moves,
+		Blocks:       blocks,
+		TextRuns:     runs,
+		AnchorRanges: anchors,
 	}
 
 	if result.Comments == nil {
@@ -78,6 +86,18 @@ func Parse(documentXML, commentsXML, commentsExtendedXML, stylesXML []byte, vers
 	}
 	if result.Moves == nil {
 		result.Moves = []model.Move{}
+	}
+	if result.Blocks == nil {
+		result.Blocks = []model.DocumentBlock{}
+	}
+	if result.TextRuns == nil {
+		result.TextRuns = []model.TextRun{}
+	}
+	if result.AnchorRanges == nil {
+		result.AnchorRanges = []model.AnchorRange{}
+	}
+	if result.Warnings == nil {
+		result.Warnings = []model.Warning{}
 	}
 
 	return result, nil
@@ -142,18 +162,81 @@ func (p *parser) readBody() ([]paraData, error) {
 
 func (p *parser) assignCommentLocations(paras []paraData, sections []model.Section, comments []model.Comment) {
 	paraToSection := p.paraToSection(paras, sections)
+	paraText := p.paraTextByIndex(paras)
 
 	for i := range comments {
+		comments[i].StableID = stableCommentID(comments[i].ID)
+		comments[i].SourcePointer = commentSourcePointer(comments[i].ID)
 		if paraIdx, ok := p.commentParaIdx[comments[i].ID]; ok {
 			if paraIdx < len(paraToSection) {
 				comments[i].SectionID = paraToSection[paraIdx]
 			}
+			comments[i].Context = paraText[paraIdx]
 		}
 		if anchor, ok := p.commentAnchors[comments[i].ID]; ok {
 			comments[i].AnchorText = anchor.Text.String()
 			comments[i].AnchorKind = anchor.Kind
+			comments[i].AnchorRangeID = stableAnchorID(comments[i].ID)
 		}
 	}
+}
+
+func (p *parser) buildSourceModel(paras []paraData, sections []model.Section, comments []model.Comment) ([]model.DocumentBlock, []model.TextRun, []model.AnchorRange) {
+	paraToSection := p.paraToSection(paras, sections)
+	paraText := p.paraTextByIndex(paras)
+
+	blocks := make([]model.DocumentBlock, 0, len(paras))
+	for _, para := range paras {
+		sectionID := ""
+		if para.idx < len(paraToSection) {
+			sectionID = paraToSection[para.idx]
+		}
+		blocks = append(blocks, model.DocumentBlock{
+			ID:            stableBlockID(para.idx),
+			Type:          "paragraph",
+			SectionID:     sectionID,
+			Text:          para.text,
+			SourcePointer: paragraphSourcePointer(para.idx),
+			Context:       para.text,
+		})
+	}
+
+	runs := append([]model.TextRun(nil), p.textRuns...)
+	for i := range runs {
+		paraIdx := blockIndexFromID(runs[i].BlockID)
+		runs[i].Context = paraText[paraIdx]
+	}
+
+	anchors := make([]model.AnchorRange, 0, len(comments))
+	for _, cmt := range comments {
+		anchor, ok := p.commentAnchors[cmt.ID]
+		if !ok {
+			continue
+		}
+		sectionID := cmt.SectionID
+		if sectionID == "" && anchor.ParaIdx < len(paraToSection) {
+			sectionID = paraToSection[anchor.ParaIdx]
+		}
+		anchors = append(anchors, model.AnchorRange{
+			ID:            stableAnchorID(cmt.ID),
+			CommentID:     cmt.ID,
+			SectionID:     sectionID,
+			Kind:          anchor.Kind,
+			Text:          anchor.Text.String(),
+			SourcePointer: commentAnchorSourcePointer(anchor.ParaIdx, cmt.ID),
+			Context:       paraText[anchor.ParaIdx],
+		})
+	}
+
+	return blocks, runs, anchors
+}
+
+func (p *parser) paraTextByIndex(paras []paraData) map[int]string {
+	text := make(map[int]string, len(paras))
+	for _, para := range paras {
+		text[para.idx] = para.text
+	}
+	return text
 }
 
 func (p *parser) paraToSection(paras []paraData, sections []model.Section) []string {

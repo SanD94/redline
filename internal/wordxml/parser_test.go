@@ -1,6 +1,7 @@
 package wordxml
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/SanD94/redline/internal/model"
@@ -89,8 +90,135 @@ func TestParseCommentsAndThreadLocations(t *testing.T) {
 	if got, want := result.Comments[0].AnchorKind, "normal"; got != want {
 		t.Fatalf("comment anchor kind = %q, want %q", got, want)
 	}
+	if got, want := result.Comments[0].StableID, "comment-1"; got != want {
+		t.Fatalf("comment stable ID = %q, want %q", got, want)
+	}
+	if got, want := result.Comments[0].AnchorRangeID, "anchor-1"; got != want {
+		t.Fatalf("comment anchor range ID = %q, want %q", got, want)
+	}
+	if got, want := result.Comments[0].SourcePointer, "word/comments.xml#/w:comments/w:comment[@w:id='1']"; got != want {
+		t.Fatalf("comment source pointer = %q, want %q", got, want)
+	}
 	if got, want := result.Comments[1].ParentID, 1; got != want {
 		t.Fatalf("reply parent ID = %d, want %d", got, want)
+	}
+}
+
+func TestParseBuildsStableSourceModel(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Introduction</w:t></w:r></w:p>
+    <w:p>
+      <w:r><w:t>Before </w:t></w:r>
+      <w:commentRangeStart w:id="1"/>
+      <w:r><w:t>commented</w:t></w:r>
+      <w:ins><w:r><w:t> added</w:t></w:r></w:ins>
+      <w:del><w:r><w:delText> deleted</w:delText></w:r></w:del>
+      <w:commentRangeEnd w:id="1"/>
+      <w:r><w:t> after.</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>`)
+	commentsXML := []byte(`
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:comment w:id="1" w:author="Reviewer" w:date="2026-06-09T13:01:00Z"><w:p><w:r><w:t>Nice comment.</w:t></w:r></w:p></w:comment>
+</w:comments>`)
+	stylesXML := []byte(heading1StylesXML)
+
+	oldResult, err := Parse(documentXML, commentsXML, nil, stylesXML, model.VersionOld)
+	if err != nil {
+		t.Fatalf("Parse(old) error = %v", err)
+	}
+	newResult, err := Parse(documentXML, commentsXML, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse(new) error = %v", err)
+	}
+
+	if got, want := oldResult.Blocks[1].Text, "Before commented deleted after."; got != want {
+		t.Fatalf("old block text = %q, want %q", got, want)
+	}
+	if got, want := newResult.Blocks[1].Text, "Before commented added after."; got != want {
+		t.Fatalf("new block text = %q, want %q", got, want)
+	}
+
+	block := newResult.Blocks[1]
+	if got, want := block.ID, "block-0002"; got != want {
+		t.Fatalf("block ID = %q, want %q", got, want)
+	}
+	if got, want := block.Type, "paragraph"; got != want {
+		t.Fatalf("block type = %q, want %q", got, want)
+	}
+	if got, want := block.SectionID, "introduction"; got != want {
+		t.Fatalf("block section = %q, want %q", got, want)
+	}
+	if got, want := block.SourcePointer, "word/document.xml#/w:document/w:body/w:p[2]"; got != want {
+		t.Fatalf("block source pointer = %q, want %q", got, want)
+	}
+	if got, want := block.Context, "Before commented added after."; got != want {
+		t.Fatalf("block context = %q, want %q", got, want)
+	}
+
+	if got, want := len(newResult.AnchorRanges), 1; got != want {
+		t.Fatalf("anchor range count = %d, want %d", got, want)
+	}
+	anchor := newResult.AnchorRanges[0]
+	if got, want := anchor.ID, "anchor-1"; got != want {
+		t.Fatalf("anchor ID = %q, want %q", got, want)
+	}
+	if got, want := anchor.Kind, "mixed"; got != want {
+		t.Fatalf("anchor kind = %q, want %q", got, want)
+	}
+	if got, want := anchor.Text, "commented added deleted"; got != want {
+		t.Fatalf("anchor text = %q, want %q", got, want)
+	}
+	if got, want := anchor.Context, "Before commented added after."; got != want {
+		t.Fatalf("anchor context = %q, want %q", got, want)
+	}
+
+	if len(newResult.TextRuns) == 0 {
+		t.Fatalf("expected text runs in source model")
+	}
+	foundDeletedRun := false
+	for _, run := range newResult.TextRuns {
+		if run.Kind == "deleted" && run.Text == " deleted" && run.BlockID == "block-0002" {
+			foundDeletedRun = true
+		}
+	}
+	if !foundDeletedRun {
+		t.Fatalf("source model did not preserve deleted text run: %#v", newResult.TextRuns)
+	}
+}
+
+func TestParseSourceModelIsDeterministic(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Discussion</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Stable text.</w:t></w:r></w:p>
+  </w:body>
+</w:document>`)
+	stylesXML := []byte(heading1StylesXML)
+
+	first, err := Parse(documentXML, nil, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse(first) error = %v", err)
+	}
+	second, err := Parse(documentXML, nil, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse(second) error = %v", err)
+	}
+
+	firstData, err := json.Marshal(first.SourceModel())
+	if err != nil {
+		t.Fatalf("marshal first source model: %v", err)
+	}
+	secondData, err := json.Marshal(second.SourceModel())
+	if err != nil {
+		t.Fatalf("marshal second source model: %v", err)
+	}
+	if string(firstData) != string(secondData) {
+		t.Fatalf("source model not deterministic:\n%s\n!=\n%s", firstData, secondData)
 	}
 }
 

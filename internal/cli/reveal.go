@@ -74,6 +74,7 @@ func RunReveal(args []string) error {
 	os.Remove(filepath.Join(opts.OutputDir, "comments.md"))
 	os.Remove(filepath.Join(opts.OutputDir, "manifest.json"))
 	os.Remove(filepath.Join(opts.OutputDir, "review-intent.json"))
+	os.Remove(filepath.Join(opts.OutputDir, "source-model.json"))
 
 	fmt.Fprintf(os.Stderr, "saving old version as snapshot...\n")
 	if err := vcsMgr.Snapshot("redline: old version snapshot"); err != nil {
@@ -99,6 +100,9 @@ func RunReveal(args []string) error {
 	if err := wr.WriteReviewIntent(newResult); err != nil {
 		return fmt.Errorf("write review intent: %w", err)
 	}
+	if err := wr.WriteSourceModel(newResult); err != nil {
+		return fmt.Errorf("write source model: %w", err)
+	}
 
 	fmt.Fprintf(os.Stderr, "  comments: %d\n", len(newResult.Comments))
 	fmt.Fprintf(os.Stderr, "  explicit moves: %d\n", len(newResult.Moves))
@@ -108,6 +112,7 @@ func RunReveal(args []string) error {
 	fmt.Fprintf(os.Stderr, "  manifest.json — section ordering and hierarchy\n")
 	fmt.Fprintf(os.Stderr, "  comments.md   — comment report with section references\n")
 	fmt.Fprintf(os.Stderr, "  review-intent.json — explicit Word review actions VCS cannot disambiguate\n")
+	fmt.Fprintf(os.Stderr, "  source-model.json — stable comment anchors and DOCX source pointers\n")
 
 	diffCmd := vcsMgr.DiffCmd()
 	if diffCmd != "" {

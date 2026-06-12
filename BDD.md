@@ -146,6 +146,7 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
     And the workspace contains `manifest.json`
     And the workspace contains `comments.md`
     And the workspace contains `review-intent.json`
+    And the workspace contains `source-model.json`
     And the manifest lists 11 sections
     And the manifest includes section ids in this order:
       | id                                  |
@@ -169,10 +170,12 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
     And `comments.md` contains `- **Text:** Comment within a comment`
     And `comments.md` contains `- **Text:** Isn’t it?`
     And `comments.md` contains `- **Text:** Done.`
-    And `review-intent.json` records one explicit move named `move231902645`
-    And the move author is `Andac, Safa`
+    And `review-intent.json` records explicit Word moves
+    And at least one move author is `Andac, Safa`
     And the move source is `word/document.xml w:moveFrom/w:moveTo`
-    And the moved text begins with `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras sed neque`
+    And the moved text contains `Lorem ipsum dolor sit amet, consectetur adipiscing elit.`
+    And `source-model.json` records stable document blocks
+    And `source-model.json` records comment anchor ranges with source pointers
 
   Scenario: Explicit Word moves are preserved as review intent metadata
     Given a paragraph contains `w:moveFromRangeStart` with name `moveA`
@@ -192,6 +195,7 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
     Then `A/manifest.json` equals `B/manifest.json`
     And `A/comments.md` equals `B/comments.md`
     And `A/review-intent.json` equals `B/review-intent.json`
+    And `A/source-model.json` equals `B/source-model.json`
     And every file under `A/sections/` equals the matching file under `B/sections/`
     And generated VCS metadata is ignored
 

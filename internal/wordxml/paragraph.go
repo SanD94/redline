@@ -2,6 +2,7 @@ package wordxml
 
 import (
 	"encoding/xml"
+	"fmt"
 	"strings"
 
 	"github.com/SanD94/redline/internal/model"
@@ -11,6 +12,8 @@ func (p *parser) readParagraph(start xml.StartElement) (paraData, error) {
 	var pc paraData
 	var textParts []string
 	p.paraIdx++
+	p.textRunInPara = 0
+	pc.idx = p.paraIdx
 
 	for {
 		tok, err := p.decoder.Token()
@@ -106,6 +109,7 @@ func (p *parser) readRun(start xml.StartElement, anchorKind string, emit, useDel
 			switch {
 			case isWordElement(t.Name, "t"):
 				text := readCharData(p.decoder)
+				p.appendTextRun(anchorKind, text)
 				p.appendCommentAnchorText(anchorKind, text)
 				if !useDelText {
 					runText.WriteString(text)
@@ -115,6 +119,7 @@ func (p *parser) readRun(start xml.StartElement, anchorKind string, emit, useDel
 				}
 			case isWordElement(t.Name, "delText"):
 				text := readCharData(p.decoder)
+				p.appendTextRun(anchorKind, text)
 				p.appendCommentAnchorText(anchorKind, text)
 				if useDelText {
 					runText.WriteString(text)
@@ -296,6 +301,21 @@ func (p *parser) appendCommentAnchorText(kind, text string) {
 		anchor.Kind = mergeAnchorKind(anchor.Kind, kind)
 		anchor.Text.WriteString(text)
 	}
+}
+
+func (p *parser) appendTextRun(kind, text string) {
+	if text == "" {
+		return
+	}
+	p.textRunIdx++
+	p.textRunInPara++
+	p.textRuns = append(p.textRuns, model.TextRun{
+		ID:            fmt.Sprintf("run-%06d", p.textRunIdx),
+		BlockID:       stableBlockID(p.paraIdx),
+		Kind:          kind,
+		Text:          text,
+		SourcePointer: textRunSourcePointer(p.paraIdx, p.textRunInPara),
+	})
 }
 
 func mergeAnchorKind(existing, next string) string {

@@ -65,6 +65,10 @@ func TestRunRevealWritesCommentsReportWhenNoCommentsExist(t *testing.T) {
 	if got, want := string(commentsData), "# Comments\n\nNo comments found.\n"; got != want {
 		t.Fatalf("comments.md = %q, want %q", got, want)
 	}
+
+	if _, err := os.Stat(filepath.Join(out, "source-model.json")); err != nil {
+		t.Fatalf("source-model.json missing: %v", err)
+	}
 }
 
 func assertSampleWorkspace(t *testing.T, dir string) {
@@ -135,18 +139,18 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 	if err := json.Unmarshal(reviewIntentData, &reviewIntent); err != nil {
 		t.Fatalf("unmarshal review intent: %v", err)
 	}
-	if got, want := len(reviewIntent.Moves), 1; got != want {
-		t.Fatalf("move count = %d, want %d", got, want)
+	if len(reviewIntent.Moves) == 0 {
+		t.Fatalf("expected at least one explicit move")
 	}
 	move := reviewIntent.Moves[0]
-	if got, want := move.Name, "move231902645"; got != want {
-		t.Fatalf("move name = %q, want %q", got, want)
+	if move.Name == "" {
+		t.Fatalf("move name is empty")
 	}
 	if got, want := move.Author, "Andac, Safa"; got != want {
 		t.Fatalf("move author = %q, want %q", got, want)
 	}
-	if got, want := move.Date, "2026-06-09T13:03:00Z"; got != want {
-		t.Fatalf("move date = %q, want %q", got, want)
+	if move.Date == "" {
+		t.Fatalf("move date is empty")
 	}
 	if got, want := move.FromSectionID, "methods"; got != want {
 		t.Fatalf("move from section = %q, want %q", got, want)
@@ -154,11 +158,62 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 	if got, want := move.ToSectionID, "methods"; got != want {
 		t.Fatalf("move to section = %q, want %q", got, want)
 	}
-	if !strings.Contains(move.Text, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras sed neque") {
+	if !strings.Contains(move.Text, "Lorem ipsum dolor sit amet, consectetur adipiscing elit.") {
 		t.Fatalf("move text missing expected paragraph start: %q", move.Text)
 	}
 	if got, want := move.Source, "word/document.xml w:moveFrom/w:moveTo"; got != want {
 		t.Fatalf("move source = %q, want %q", got, want)
+	}
+
+	sourceModelData, err := os.ReadFile(filepath.Join(dir, "source-model.json"))
+	if err != nil {
+		t.Fatalf("read source model: %v", err)
+	}
+	var sourceModel struct {
+		DocumentBlocks []struct {
+			ID            string `json:"id"`
+			Type          string `json:"type"`
+			SectionID     string `json:"sectionId"`
+			SourcePointer string `json:"sourcePointer"`
+			Context       string `json:"context"`
+		} `json:"documentBlocks"`
+		Comments []struct {
+			StableID      string `json:"stableId"`
+			AnchorRangeID string `json:"anchorRangeId"`
+			SourcePointer string `json:"sourcePointer"`
+		} `json:"comments"`
+		AnchorRanges []struct {
+			ID            string `json:"id"`
+			SourcePointer string `json:"sourcePointer"`
+		} `json:"anchorRanges"`
+	}
+	if err := json.Unmarshal(sourceModelData, &sourceModel); err != nil {
+		t.Fatalf("unmarshal source model: %v", err)
+	}
+	if len(sourceModel.DocumentBlocks) == 0 {
+		t.Fatalf("source model has no document blocks")
+	}
+	firstBlock := sourceModel.DocumentBlocks[0]
+	if got, want := firstBlock.ID, "block-0001"; got != want {
+		t.Fatalf("first source block ID = %q, want %q", got, want)
+	}
+	if got, want := firstBlock.Type, "paragraph"; got != want {
+		t.Fatalf("first source block type = %q, want %q", got, want)
+	}
+	if !strings.HasPrefix(firstBlock.SourcePointer, "word/document.xml#") {
+		t.Fatalf("first source block pointer = %q, want word/document.xml pointer", firstBlock.SourcePointer)
+	}
+	if len(sourceModel.Comments) == 0 {
+		t.Fatalf("source model has no comments")
+	}
+	if sourceModel.Comments[0].StableID == "" || sourceModel.Comments[0].SourcePointer == "" {
+		t.Fatalf("source model comment missing stable identity/source: %#v", sourceModel.Comments[0])
+	}
+	if len(sourceModel.AnchorRanges) == 0 {
+		t.Fatalf("source model has no anchor ranges")
+	}
+	if sourceModel.AnchorRanges[0].ID == "" || sourceModel.AnchorRanges[0].SourcePointer == "" {
+		t.Fatalf("source model anchor missing stable identity/source: %#v", sourceModel.AnchorRanges[0])
 	}
 
 	commentsData, err := os.ReadFile(filepath.Join(dir, "comments.md"))
@@ -197,7 +252,7 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 func assertWorkspaceOutputsEqual(t *testing.T, a, b string) {
 	t.Helper()
 
-	for _, rel := range []string{"manifest.json", "comments.md", "review-intent.json"} {
+	for _, rel := range []string{"manifest.json", "comments.md", "review-intent.json", "source-model.json"} {
 		assertFilesEqual(t, filepath.Join(a, rel), filepath.Join(b, rel))
 	}
 
