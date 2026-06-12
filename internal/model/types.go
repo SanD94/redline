@@ -18,6 +18,19 @@ type Comment struct {
 	AnchorKind string `json:"anchorKind,omitempty"`
 }
 
+type Move struct {
+	ID            string `json:"id"`
+	Name          string `json:"name,omitempty"`
+	Author        string `json:"author,omitempty"`
+	Date          string `json:"date,omitempty"`
+	Text          string `json:"text"`
+	FromSectionID string `json:"fromSectionId,omitempty"`
+	ToSectionID   string `json:"toSectionId,omitempty"`
+	FromContext   string `json:"fromContext,omitempty"`
+	ToContext     string `json:"toContext,omitempty"`
+	Source        string `json:"source"`
+}
+
 type Section struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
@@ -28,4 +41,5 @@ type Section struct {
 type RevealResult struct {
 	Sections []Section `json:"sections"`
 	Comments []Comment `json:"comments"`
+	Moves    []Move    `json:"moves"`
 }

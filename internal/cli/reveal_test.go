@@ -117,6 +117,50 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 		t.Fatalf("section file count = %d, want %d", got, want)
 	}
 
+	reviewIntentData, err := os.ReadFile(filepath.Join(dir, "review-intent.json"))
+	if err != nil {
+		t.Fatalf("read review intent: %v", err)
+	}
+	var reviewIntent struct {
+		Moves []struct {
+			Name          string `json:"name"`
+			Author        string `json:"author"`
+			Date          string `json:"date"`
+			Text          string `json:"text"`
+			FromSectionID string `json:"fromSectionId"`
+			ToSectionID   string `json:"toSectionId"`
+			Source        string `json:"source"`
+		} `json:"moves"`
+	}
+	if err := json.Unmarshal(reviewIntentData, &reviewIntent); err != nil {
+		t.Fatalf("unmarshal review intent: %v", err)
+	}
+	if got, want := len(reviewIntent.Moves), 1; got != want {
+		t.Fatalf("move count = %d, want %d", got, want)
+	}
+	move := reviewIntent.Moves[0]
+	if got, want := move.Name, "move231902645"; got != want {
+		t.Fatalf("move name = %q, want %q", got, want)
+	}
+	if got, want := move.Author, "Andac, Safa"; got != want {
+		t.Fatalf("move author = %q, want %q", got, want)
+	}
+	if got, want := move.Date, "2026-06-09T13:03:00Z"; got != want {
+		t.Fatalf("move date = %q, want %q", got, want)
+	}
+	if got, want := move.FromSectionID, "methods"; got != want {
+		t.Fatalf("move from section = %q, want %q", got, want)
+	}
+	if got, want := move.ToSectionID, "methods"; got != want {
+		t.Fatalf("move to section = %q, want %q", got, want)
+	}
+	if !strings.Contains(move.Text, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras sed neque") {
+		t.Fatalf("move text missing expected paragraph start: %q", move.Text)
+	}
+	if got, want := move.Source, "word/document.xml w:moveFrom/w:moveTo"; got != want {
+		t.Fatalf("move source = %q, want %q", got, want)
+	}
+
 	commentsData, err := os.ReadFile(filepath.Join(dir, "comments.md"))
 	if err != nil {
 		t.Fatalf("read comments: %v", err)
@@ -153,7 +197,7 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 func assertWorkspaceOutputsEqual(t *testing.T, a, b string) {
 	t.Helper()
 
-	for _, rel := range []string{"manifest.json", "comments.md"} {
+	for _, rel := range []string{"manifest.json", "comments.md", "review-intent.json"} {
 		assertFilesEqual(t, filepath.Join(a, rel), filepath.Join(b, rel))
 	}
 

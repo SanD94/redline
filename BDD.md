@@ -145,6 +145,7 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
     Then the workspace contains `sections/`
     And the workspace contains `manifest.json`
     And the workspace contains `comments.md`
+    And the workspace contains `review-intent.json`
     And the manifest lists 11 sections
     And the manifest includes section ids in this order:
       | id                                  |
@@ -168,6 +169,21 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
     And `comments.md` contains `- **Text:** Comment within a comment`
     And `comments.md` contains `- **Text:** Isn’t it?`
     And `comments.md` contains `- **Text:** Done.`
+    And `review-intent.json` records one explicit move named `move231902645`
+    And the move author is `Andac, Safa`
+    And the move source is `word/document.xml w:moveFrom/w:moveTo`
+    And the moved text begins with `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras sed neque`
+
+  Scenario: Explicit Word moves are preserved as review intent metadata
+    Given a paragraph contains `w:moveFromRangeStart` with name `moveA`
+    And a later paragraph contains `w:moveToRangeStart` with name `moveA`
+    And both ranges contain moved text `X`
+    When the Word XML parser extracts the document
+    Then the accepted Markdown contains `X` only at the moved-to location
+    And `review-intent.json` records a move named `moveA`
+    And the move text is `X`
+    And the move records from and to section ids
+    And the move records author and date when Word provides them
 
   Scenario: Reveal output is deterministic for the sample DOCX
     Given the fixture `workspace/sample.docx`
@@ -175,6 +191,7 @@ Feature: Reveal a reviewed DOCX as a Markdown workspace
     And `redline reveal workspace/sample.docx` writes to temporary workspace `B`
     Then `A/manifest.json` equals `B/manifest.json`
     And `A/comments.md` equals `B/comments.md`
+    And `A/review-intent.json` equals `B/review-intent.json`
     And every file under `A/sections/` equals the matching file under `B/sections/`
     And generated VCS metadata is ignored
 

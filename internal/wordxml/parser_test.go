@@ -155,8 +155,8 @@ func TestParseMovedTextOldAndNewVersions(t *testing.T) {
   <w:body>
     <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Introduction</w:t></w:r></w:p>
     <w:p>
-      <w:moveFromRangeStart w:id="1"/>
-      <w:moveFrom w:id="1">
+      <w:moveFromRangeStart w:id="1" w:name="moveA" w:author="Reviewer" w:date="2026-06-09T13:03:00Z"/>
+      <w:moveFrom w:id="2">
         <w:r><w:t>Text0</w:t></w:r>
       </w:moveFrom>
       <w:moveFromRangeEnd w:id="1"/>
@@ -164,8 +164,8 @@ func TestParseMovedTextOldAndNewVersions(t *testing.T) {
     </w:p>
     <w:p>
       <w:r><w:t>another text</w:t></w:r>
-      <w:moveToRangeStart w:id="1"/>
-      <w:moveTo w:id="1">
+      <w:moveToRangeStart w:id="3" w:name="moveA" w:author="Reviewer" w:date="2026-06-09T13:03:00Z"/>
+      <w:moveTo w:id="4">
         <w:r><w:t> Text0</w:t></w:r>
       </w:moveTo>
       <w:moveToRangeEnd w:id="1"/>
@@ -190,6 +190,28 @@ func TestParseMovedTextOldAndNewVersions(t *testing.T) {
 	// New version: moveFrom text gone, " another text" kept; moveTo added at end
 	if got, want := newResult.Sections[0].Content, " another text\n\nanother text Text0"; got != want {
 		t.Fatalf("new content = %q, want %q", got, want)
+	}
+	if got, want := len(newResult.Moves), 1; got != want {
+		t.Fatalf("move count = %d, want %d", got, want)
+	}
+	move := newResult.Moves[0]
+	if got, want := move.Name, "moveA"; got != want {
+		t.Fatalf("move name = %q, want %q", got, want)
+	}
+	if got, want := move.Author, "Reviewer"; got != want {
+		t.Fatalf("move author = %q, want %q", got, want)
+	}
+	if got, want := move.Date, "2026-06-09T13:03:00Z"; got != want {
+		t.Fatalf("move date = %q, want %q", got, want)
+	}
+	if got, want := move.Text, "Text0"; got != want {
+		t.Fatalf("move text = %q, want %q", got, want)
+	}
+	if got, want := move.FromSectionID, "introduction"; got != want {
+		t.Fatalf("move from section = %q, want %q", got, want)
+	}
+	if got, want := move.ToSectionID, "introduction"; got != want {
+		t.Fatalf("move to section = %q, want %q", got, want)
 	}
 }
 

@@ -24,7 +24,7 @@ Redline should become a small command suite with two complementary directions:
 
 Proposed action names:
 
-1. `redline reveal <file.docx>` — split a Word file into title-wise content, figures, references, comments, and tracked changes. The redlines become visible and structured.
+1. `redline reveal <file.docx>` — split a Word file into title-wise content, figures, references, comments, tracked changes, and a small review-intent sidecar for Word actions that VCS cannot disambiguate. The redlines become visible and structured.
 2. `redline audit` — compare the latest revealed Word content against the current Markdown sources, even when Word track changes were not enabled.
 3. `redline imprint <file.docx>` — patch a copy of the received Word file using the Markdown sources, preserving as much useful Word structure as possible.
 4. `redline disappear` — merge Markdown sources, figures, references, and metadata into a clean Word file. The redline workflow has done its job and vanishes into the final deliverable.
@@ -81,12 +81,14 @@ Deliver working CLI that can divide a `.docx` into a redline workspace:
 4. Detect comments and comment anchors.
 5. Detect title or heading boundaries.
 6. Extract body text into title-wise Markdown files.
-7. Emit Markdown outputs and rely on the VCS diff for tracked-change information.
+7. Emit Markdown outputs and rely on the VCS diff for ordinary tracked insertion/deletion effects.
+8. Emit a small review-intent sidecar for explicit Word review actions that outcome diffs cannot attribute safely, starting with `w:moveFrom`/`w:moveTo` pairs.
 
 Success criteria:
 
 - one sample file in, one redline workspace out
 - insertions and deletions visible in output
+- explicit Word moves preserved as metadata rather than inferred from the VCS diff
 - comments attached at least to nearby sections
 - sections split by title or heading
 - output stable across repeated runs
@@ -101,6 +103,7 @@ Suggested entities:
 - `TextRun`
 - `Comment`
 - `AnchorRange`
+- `ReviewAction` / `Move`
 - `Warning`
 
 Each extracted item should carry:
@@ -112,7 +115,7 @@ Each extracted item should carry:
 - raw DOCX xml pointer or path
 - surrounding text context
 
-Reason: comments and source pointers need deterministic identity, while insertions and deletions should be expressed by the VCS diff between old and new workspace snapshots.
+Reason: comments, explicit moves, and source pointers need deterministic identity, while ordinary insertions and deletions should still be expressed by the VCS diff between old and new workspace snapshots. A reorder such as `X Y` to `Y X` is outcome-equivalent to moving either item, so Redline must preserve Word's explicit move intent when Word provides it instead of asking VCS to infer it.
 
 ## Phase 3: Markdown-First Output
 
@@ -130,6 +133,7 @@ Suggested render rules:
 - Do not render tracked insertions/deletions with a Redline-specific inline syntax by default.
 - Render old and new document states as normal Markdown and let `jj diff` or `git diff` show changes.
 - Render comment bodies and anchor metadata in `comments.md`.
+- Render explicit Word actions that VCS cannot disambiguate in sidecar metadata such as `review-intent.json`, not inline section Markdown.
 - Inline comment markers are orthogonal to the VCS-first reveal flow and can be added later for editor/plugin UX.
 
 Need config for compact vs verbose mode.
@@ -433,7 +437,8 @@ Command flow:
 4. `internal/workspace.Writer` writes the old-version sections first.
 5. `internal/vcs.Manager` snapshots that old-version workspace with `jj` when available, otherwise `git`.
 6. `internal/workspace.Writer` overwrites sections with the new-version output and writes current metadata files.
-7. The resulting VCS diff represents old-to-new tracked-change effects in Markdown form.
+7. `review-intent.json` records explicit Word review actions that VCS outcome diffs cannot attribute safely, currently explicit moves paired by `w:name` when present.
+8. The resulting VCS diff represents old-to-new tracked insertion/deletion effects in Markdown form.
 
 Current parser behavior:
 
@@ -444,6 +449,7 @@ Current parser behavior:
 - Level-2+ headings are rendered inside the current section as Markdown headings.
 - `w:ins` and `w:moveTo` are included only in the new version.
 - `w:del` and `w:moveFrom` are included only in the old version.
+- Explicit Word moves are also preserved as sidecar metadata when matching `w:moveFromRangeStart` and `w:moveToRangeStart` ranges can be paired, using `w:name` when present and falling back to `w:id`.
 - Comment bodies are read from `word/comments.xml`.
 - Comment reply relationships are read from `word/commentsExtended.xml`.
 - Comment locations are assigned from `w:commentRangeStart` paragraph positions to the nearest parsed section.
@@ -453,6 +459,14 @@ Current workspace output:
 - `sections/<section-id>.md` — current/new accepted section text.
 - `manifest.json` — deterministic section ordering with id, title, and heading level.
 - `comments.md` — Markdown comment report, always written even when no comments exist.
+- `review-intent.json` — deterministic sidecar for explicit Word actions that VCS cannot infer reliably, currently explicit moves with author/date/source and from/to sections.
+
+Round-trip direction:
+
+- For a future preserve-review `imprint` path, Redline should patch a copy of the original revision-bearing DOCX rather than accepting all existing revisions first.
+- Existing tracked changes from the received DOCX should be copied through unchanged when the user's Markdown edits do not overlap them.
+- User edits should be emitted as new `w:ins`/`w:del` markup relative to the revealed editable Markdown projection.
+- User edits that overlap existing received revisions should become explicit conflicts or require a resolution mode; Redline should not silently nest or rewrite another author's tracked changes.
 
 Current known gaps relative to the full roadmap:
 

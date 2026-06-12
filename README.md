@@ -9,7 +9,7 @@ Redline treats the local VCS as a first-class dependency, not as an optional exp
 - `jj` or `git` is required for reveal workspaces.
 - Pandoc is expected to be used where document conversion is the right abstraction.
 - Redline should not maintain a redundant review-data diff format for tracked changes. The VCS diff is the review diff.
-- Redline-specific output should focus on stable Markdown sections, a manifest, and a human-readable comment report.
+- Redline-specific output should focus on stable Markdown sections, a manifest, comments, and small sidecar metadata for Word review intent that VCS cannot disambiguate.
 
 ## Current command
 
@@ -37,8 +37,9 @@ git diff --cached
 - `sections/<section-id>.md` — current/new accepted section text.
 - `manifest.json` — deterministic section ordering with id, title, and heading level.
 - `comments.md` — comment report. This file is always written, even when the Word document contains no comments.
+- `review-intent.json` — explicit Word review actions that outcome diffs cannot attribute safely, currently explicit moves.
 
-No separate machine-readable change list is emitted in the current design. Tracked-change information belongs in the VCS diff.
+No separate machine-readable insertion/deletion diff is emitted in the current design. Ordinary tracked-change information belongs in the VCS diff. Explicit Word actions such as moves are preserved as metadata because a VCS outcome diff can show the right final text while attributing the move to the wrong paragraph.
 
 ## Comments
 

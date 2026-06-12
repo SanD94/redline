@@ -11,6 +11,7 @@ smoke:
 	go run ./cmd/redline reveal workspace/sample.docx --output $$out; \
 	test -f $$out/manifest.json; \
 	test -f $$out/comments.md; \
+	test -f $$out/review-intent.json; \
 	test -d $$out/sections; \
 	echo "smoke workspace: $$out"
 

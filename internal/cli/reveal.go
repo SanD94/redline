@@ -73,6 +73,7 @@ func RunReveal(args []string) error {
 
 	os.Remove(filepath.Join(opts.OutputDir, "comments.md"))
 	os.Remove(filepath.Join(opts.OutputDir, "manifest.json"))
+	os.Remove(filepath.Join(opts.OutputDir, "review-intent.json"))
 
 	fmt.Fprintf(os.Stderr, "saving old version as snapshot...\n")
 	if err := vcsMgr.Snapshot("redline: old version snapshot"); err != nil {
@@ -95,13 +96,18 @@ func RunReveal(args []string) error {
 	if err := wr.WriteComments(newResult); err != nil {
 		return fmt.Errorf("write comments: %w", err)
 	}
+	if err := wr.WriteReviewIntent(newResult); err != nil {
+		return fmt.Errorf("write review intent: %w", err)
+	}
 
 	fmt.Fprintf(os.Stderr, "  comments: %d\n", len(newResult.Comments))
+	fmt.Fprintf(os.Stderr, "  explicit moves: %d\n", len(newResult.Moves))
 
 	fmt.Fprintf(os.Stderr, "\nworkspace: %s\n", opts.OutputDir)
 	fmt.Fprintf(os.Stderr, "  sections/     — title-wise markdown files (new version)\n")
 	fmt.Fprintf(os.Stderr, "  manifest.json — section ordering and hierarchy\n")
 	fmt.Fprintf(os.Stderr, "  comments.md   — comment report with section references\n")
+	fmt.Fprintf(os.Stderr, "  review-intent.json — explicit Word review actions VCS cannot disambiguate\n")
 
 	diffCmd := vcsMgr.DiffCmd()
 	if diffCmd != "" {
