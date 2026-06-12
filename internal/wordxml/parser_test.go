@@ -42,6 +42,31 @@ func TestParseTrackedChangesOldAndNewVersions(t *testing.T) {
 	}
 }
 
+func TestParseNormalizesFormattingOnlyRunNoise(t *testing.T) {
+	documentXML := []byte(`
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Introduction</w:t></w:r></w:p>
+    <w:p>
+      <w:r><w:t>Before  </w:t></w:r>
+      <w:r><w:t> formatted</w:t></w:r>
+      <w:r><w:t>   text </w:t></w:r>
+      <w:r><w:t> .</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>`)
+	stylesXML := []byte(heading1StylesXML)
+
+	result, err := Parse(documentXML, nil, nil, stylesXML, model.VersionNew)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if got, want := result.Sections[0].Content, "Before formatted text."; got != want {
+		t.Fatalf("normalized content = %q, want %q", got, want)
+	}
+}
+
 func TestParseCommentsAndThreadLocations(t *testing.T) {
 	documentXML := []byte(`
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -268,7 +293,7 @@ func TestParseCommentAnchorsForNormalAddedAndDeletedText(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 
-	if got, want := result.Sections[0].Content, "Before normal added  after.\n\nmixed normal and added"; got != want {
+	if got, want := result.Sections[0].Content, "Before normal added after.\n\nmixed normal and added"; got != want {
 		t.Fatalf("new content = %q, want %q", got, want)
 	}
 	assertCommentAnchor(t, result.Comments, 1, "normal", "normal")
@@ -315,8 +340,8 @@ func TestParseMovedTextOldAndNewVersions(t *testing.T) {
 	if got, want := oldResult.Sections[0].Content, "Text0 another text\n\nanother text"; got != want {
 		t.Fatalf("old content = %q, want %q", got, want)
 	}
-	// New version: moveFrom text gone, " another text" kept; moveTo added at end
-	if got, want := newResult.Sections[0].Content, " another text\n\nanother text Text0"; got != want {
+	// New version: moveFrom text gone, remaining paragraph text normalized; moveTo added at end
+	if got, want := newResult.Sections[0].Content, "another text\n\nanother text Text0"; got != want {
 		t.Fatalf("new content = %q, want %q", got, want)
 	}
 	if got, want := len(newResult.Moves), 1; got != want {

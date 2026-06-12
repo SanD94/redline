@@ -67,12 +67,25 @@ func (p *parser) readParagraph(start xml.StartElement) (paraData, error) {
 			}
 		case xml.EndElement:
 			if isWordEnd(t.Name, "p") {
-				pc.text = strings.Join(textParts, "")
+				pc.text = normalizeParagraphText(strings.Join(textParts, ""))
 				return pc, nil
 			}
 		case xml.CharData:
 		}
 	}
+}
+
+func normalizeParagraphText(text string) string {
+	text = strings.ReplaceAll(text, "\u00a0", " ")
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return ""
+	}
+	text = strings.Join(fields, " ")
+	for _, punct := range []string{".", ",", ";", ":", "!", "?"} {
+		text = strings.ReplaceAll(text, " "+punct, punct)
+	}
+	return text
 }
 
 func (p *parser) readStyle(start xml.StartElement) string {
