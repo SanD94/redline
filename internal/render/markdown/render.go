@@ -21,6 +21,20 @@ func RenderSection(sec model.Section) string {
 	return b.String()
 }
 
+func RenderDocument(result *model.RevealResult) string {
+	var b strings.Builder
+
+	for i, sec := range result.Sections {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(strings.TrimRight(RenderSection(sec), "\n"))
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
 func RenderComments(result *model.RevealResult) string {
 	var b strings.Builder
 	b.WriteString("# Comments\n\n")

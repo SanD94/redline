@@ -44,3 +44,14 @@ func TestRenderComments(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderDocumentUsesSectionOrder(t *testing.T) {
+	got := RenderDocument(&model.RevealResult{Sections: []model.Section{
+		{ID: "intro", Title: "Introduction", Level: 1, Content: "Intro body."},
+		{ID: "methods", Title: "Methods", Level: 1, Content: "Methods body."},
+	}})
+	want := "# Introduction\n\nIntro body.\n\n# Methods\n\nMethods body.\n"
+	if got != want {
+		t.Fatalf("RenderDocument() = %q, want %q", got, want)
+	}
+}

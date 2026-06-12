@@ -72,7 +72,9 @@ func RunReveal(args []string) error {
 	}
 
 	os.Remove(filepath.Join(opts.OutputDir, "comments.md"))
+	os.Remove(filepath.Join(opts.OutputDir, "document.md"))
 	os.Remove(filepath.Join(opts.OutputDir, "manifest.json"))
+	os.Remove(filepath.Join(opts.OutputDir, "references.md"))
 	os.Remove(filepath.Join(opts.OutputDir, "review-intent.json"))
 	os.Remove(filepath.Join(opts.OutputDir, "source-model.json"))
 
@@ -90,6 +92,15 @@ func RunReveal(args []string) error {
 
 	if err := wr.WriteSections(newResult); err != nil {
 		return fmt.Errorf("write new sections: %w", err)
+	}
+	if err := wr.EnsureAssetDirs(); err != nil {
+		return fmt.Errorf("write asset dirs: %w", err)
+	}
+	if err := wr.WriteDocument(newResult); err != nil {
+		return fmt.Errorf("write document: %w", err)
+	}
+	if err := wr.WriteReferences(newResult); err != nil {
+		return fmt.Errorf("write references: %w", err)
 	}
 	if err := wr.WriteManifest(newResult); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
@@ -109,6 +120,8 @@ func RunReveal(args []string) error {
 
 	fmt.Fprintf(os.Stderr, "\nworkspace: %s\n", opts.OutputDir)
 	fmt.Fprintf(os.Stderr, "  sections/     — title-wise markdown files (new version)\n")
+	fmt.Fprintf(os.Stderr, "  document.md   — full accepted markdown assembled in section order\n")
+	fmt.Fprintf(os.Stderr, "  figures/      — extracted figure assets when available\n")
 	fmt.Fprintf(os.Stderr, "  manifest.json — section ordering and hierarchy\n")
 	fmt.Fprintf(os.Stderr, "  comments.md   — comment report with section references\n")
 	fmt.Fprintf(os.Stderr, "  review-intent.json — explicit Word review actions VCS cannot disambiguate\n")

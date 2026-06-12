@@ -121,6 +121,20 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 		t.Fatalf("section file count = %d, want %d", got, want)
 	}
 
+	if _, err := os.Stat(filepath.Join(dir, "figures")); err != nil {
+		t.Fatalf("figures directory missing: %v", err)
+	}
+	documentData, err := os.ReadFile(filepath.Join(dir, "document.md"))
+	if err != nil {
+		t.Fatalf("read document.md: %v", err)
+	}
+	if !strings.Contains(string(documentData), "# A very nice big title for the study") {
+		t.Fatalf("document.md missing first section heading")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "references.md")); err != nil {
+		t.Fatalf("references.md missing: %v", err)
+	}
+
 	reviewIntentData, err := os.ReadFile(filepath.Join(dir, "review-intent.json"))
 	if err != nil {
 		t.Fatalf("read review intent: %v", err)
@@ -252,7 +266,7 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 func assertWorkspaceOutputsEqual(t *testing.T, a, b string) {
 	t.Helper()
 
-	for _, rel := range []string{"manifest.json", "comments.md", "review-intent.json", "source-model.json"} {
+	for _, rel := range []string{"manifest.json", "document.md", "comments.md", "review-intent.json", "source-model.json"} {
 		assertFilesEqual(t, filepath.Join(a, rel), filepath.Join(b, rel))
 	}
 
