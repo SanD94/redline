@@ -138,25 +138,7 @@ Suggested render rules:
 
 Need config for compact vs verbose mode.
 
-## Phase 4: `redline audit` Safety Diff
-
-Track changes may be missing or incomplete, so Redline needs a fallback comparison workflow. The fallback should still be VCS-based: create or update a revealed snapshot and let `jj`/`git` show the difference against the user's Markdown sources.
-
-Tasks:
-
-1. Use the output of `redline reveal <file.docx>` as the Word-side snapshot.
-2. Compare revealed current Word content against current Markdown sources.
-3. Report differences by section with stable anchors where possible.
-4. Distinguish the normal reveal old-to-new VCS diff from audit diffs against existing Markdown sources.
-5. Warn when a collaborator appears to have edited without enabling track changes.
-
-Success criteria:
-
-- user can detect untracked Word edits before accepting or overwriting anything
-- audit output points to reproducible `jj` or `git` commands and has useful exit status for automation
-- section-level matching survives minor heading or paragraph movement
-
-## Phase 5: Better VCS Diff Quality
+## Phase 4: Better VCS Diff Quality
 
 Word tracked changes often split text into many tiny XML runs. Redline should improve the old/new Markdown snapshots so the VCS diff is readable, rather than creating its own diff engine.
 
@@ -169,7 +151,7 @@ Tasks:
 
 This phase matters because raw XML extraction alone will make ugly Markdown.
 
-## Phase 6: Comment Accuracy
+## Phase 5: Comment Accuracy
 
 Comments often live in separate XML parts with range markers in main document.
 
@@ -180,7 +162,7 @@ Tasks:
 3. Fall back to nearby text when exact range broken.
 4. Preserve author, timestamp, threaded reply data if present.
 
-## Phase 7: `redline imprint` Patch Word Copy
+## Phase 6: `redline imprint` Patch Word Copy
 
 After Markdown edits are reviewed, Redline should patch a copy of a received `.docx`.
 
@@ -199,7 +181,7 @@ Success criteria:
 - changed sections reflect Markdown content
 - unsupported formatting loss is explicit, not silent
 
-## Phase 8: `redline disappear` Build Clean Word From Markdown
+## Phase 7: `redline disappear` Build Clean Word From Markdown
 
 Redline should also generate a clean Word document from Markdown sources, with Pandoc as the primary conversion engine.
 
@@ -220,7 +202,7 @@ Success criteria:
 - output can be regenerated in CI
 - missing Pandoc is reported as an actionable dependency error
 
-## Phase 9: Nice Workflow
+## Phase 8: Nice Workflow
 
 After core extraction works, add workflow helpers.
 
@@ -377,28 +359,6 @@ Create fixtures and record Pandoc outputs for:
 
 These experiments define which parts Pandoc handles reliably and which parts Redline must own in Go.
 
-## Parsing Priorities
-
-Read these DOCX parts first:
-
-1. `word/document.xml`
-2. `word/comments.xml`
-3. `word/_rels/document.xml.rels`
-4. optional header/footer parts later
-5. media relationships for figures
-6. numbering/styles later for better Markdown and DOCX output
-
-WordprocessingML elements likely needed:
-
-- `w:ins`
-- `w:del`
-- `w:commentRangeStart`
-- `w:commentRangeEnd`
-- `w:commentReference`
-- `w:r`
-- `w:t`
-- `w:p`
-
 ## Risks
 
 1. Word XML noisy; naive extraction will fragment text.
@@ -418,64 +378,6 @@ Mitigation:
 - snapshot expected Markdown outputs
 - record Pandoc version in generated metadata when Pandoc is used
 - provide a documented install check for Pandoc-dependent commands
-
-## Current Phase 1 Implementation Details
-
-The implemented slice is the Go-only `redline reveal` path. It does not depend on Pandoc yet.
-
-Command flow:
-
-1. `cmd/redline` dispatches `redline reveal <file.docx> [--output <dir>]` to `internal/cli.RunReveal`.
-2. `internal/docx.Open` reads the DOCX zip archive and loads these Word parts when present:
-   - `word/document.xml`
-   - `word/comments.xml`
-   - `word/commentsExtended.xml`
-   - `word/styles.xml`
-3. `internal/wordxml.Parse` runs twice over the same document XML:
-   - `model.VersionOld`: rejects insertions and keeps deletions to reconstruct the pre-review text.
-   - `model.VersionNew`: keeps insertions and rejects deletions to reconstruct the accepted/current text.
-4. `internal/workspace.Writer` writes the old-version sections first.
-5. `internal/vcs.Manager` snapshots that old-version workspace with `jj` when available, otherwise `git`.
-6. `internal/workspace.Writer` overwrites sections with the new-version output and writes current metadata files.
-7. `review-intent.json` records explicit Word review actions that VCS outcome diffs cannot attribute safely, currently explicit moves paired by `w:name` when present.
-8. The resulting VCS diff represents old-to-new tracked insertion/deletion effects in Markdown form.
-
-Current parser behavior:
-
-- Body paragraphs are parsed from `word/document.xml`.
-- Tables and section properties are skipped for now.
-- Heading boundaries are detected from direct Word heading style names or from `word/styles.xml` canonical style names.
-- Level-1 headings start new section files.
-- Level-2+ headings are rendered inside the current section as Markdown headings.
-- `w:ins` and `w:moveTo` are included only in the new version.
-- `w:del` and `w:moveFrom` are included only in the old version.
-- Explicit Word moves are also preserved as sidecar metadata when matching `w:moveFromRangeStart` and `w:moveToRangeStart` ranges can be paired, using `w:name` when present and falling back to `w:id`.
-- Comment bodies are read from `word/comments.xml`.
-- Comment reply relationships are read from `word/commentsExtended.xml`.
-- Comment locations are assigned from `w:commentRangeStart` paragraph positions to the nearest parsed section.
-
-Current workspace output:
-
-- `sections/<section-id>.md` — current/new accepted section text.
-- `manifest.json` — deterministic section ordering with id, title, and heading level.
-- `comments.md` — Markdown comment report, always written even when no comments exist.
-- `review-intent.json` — deterministic sidecar for explicit Word actions that VCS cannot infer reliably, currently explicit moves with author/date/source and from/to sections.
-
-Round-trip direction:
-
-- For a future preserve-review `imprint` path, Redline should patch a copy of the original revision-bearing DOCX rather than accepting all existing revisions first.
-- Existing tracked changes from the received DOCX should be copied through unchanged when the user's Markdown edits do not overlap them.
-- User edits should be emitted as new `w:ins`/`w:del` markup relative to the revealed editable Markdown projection.
-- User edits that overlap existing received revisions should become explicit conflicts or require a resolution mode; Redline should not silently nest or rewrite another author's tracked changes.
-
-Current known gaps relative to the full roadmap:
-
-- No `document.md`, `figures/`, references extraction, or diagnostics output yet.
-- No Pandoc-assisted accepted/rejected extraction yet.
-- No table, figure, bibliography, footnote, header, or footer extraction yet.
-- No `audit`, `imprint`, `disappear`, `check`, or `pandoc` commands yet.
-
-Behavior specifications and test scenarios live in `BDD.md`.
 
 ## Definition Of Done
 
