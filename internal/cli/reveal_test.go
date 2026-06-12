@@ -266,7 +266,7 @@ func assertSampleWorkspace(t *testing.T, dir string) {
 func assertWorkspaceOutputsEqual(t *testing.T, a, b string) {
 	t.Helper()
 
-	for _, rel := range []string{"manifest.json", "document.md", "comments.md", "review-intent.json", "source-model.json"} {
+	for _, rel := range []string{"manifest.json", "document.md", "comments.md", "review-intent.json", "source-model.json", "summary.json", "summary.md"} {
 		assertFilesEqual(t, filepath.Join(a, rel), filepath.Join(b, rel))
 	}
 
