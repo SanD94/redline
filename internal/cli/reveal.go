@@ -59,6 +59,9 @@ func RunReveal(args []string) error {
 	fmt.Fprintf(os.Stderr, "  vcs: %s\n", vcsMgr.VCS)
 
 	wr := workspace.NewWriter(opts.OutputDir)
+	if err := wr.WriteIgnore(); err != nil {
+		return fmt.Errorf("write workspace ignore: %w", err)
+	}
 
 	fmt.Fprintf(os.Stderr, "extracting old version (tracked changes rejected)...\n")
 	oldResult, err := wordxml.Parse(r.DocumentXML(), r.CommentsXML(), r.CommentsExtendedXML(), r.StylesXML(), model.VersionOld)
@@ -98,6 +101,9 @@ func RunReveal(args []string) error {
 	}
 	if err := wr.WriteDocument(newResult); err != nil {
 		return fmt.Errorf("write document: %w", err)
+	}
+	if err := wr.WriteAuditBaseline(newResult); err != nil {
+		return fmt.Errorf("write audit baseline: %w", err)
 	}
 	if err := wr.WriteReferences(newResult); err != nil {
 		return fmt.Errorf("write references: %w", err)

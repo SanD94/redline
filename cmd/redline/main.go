@@ -12,6 +12,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "usage: redline <command> [args]\n\n")
 		fmt.Fprintf(os.Stderr, "commands:\n")
 		fmt.Fprintf(os.Stderr, "  reveal   split a docx into structured markdown and review data\n")
+		fmt.Fprintf(os.Stderr, "  audit    compare current markdown sources to the last reveal baseline\n")
 		os.Exit(1)
 	}
 
@@ -23,6 +24,8 @@ func main() {
 	switch cmd {
 	case "reveal":
 		err = cli.RunReveal(args)
+	case "audit":
+		err = cli.RunAudit(args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		fmt.Fprintf(os.Stderr, "usage: redline <command> [args]\n")
